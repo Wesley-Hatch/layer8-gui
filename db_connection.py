@@ -453,7 +453,7 @@ class DatabaseConnection:
         """Check if database connection is active"""
         if not self.connection:
             return False
-        
+
         if self.dialect == 'sqlite':
             try:
                 self.connection.execute("SELECT 1")
@@ -461,7 +461,11 @@ class DatabaseConnection:
             except:
                 return False
         else:
-            return self.connection.is_connected()
+            # PyMySQL: check if connection is open
+            try:
+                return self.connection.open
+            except:
+                return False
 
     def verify_login(self, username: str, password: str) -> Tuple[bool, Any]:
         """
