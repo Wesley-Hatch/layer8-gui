@@ -29,9 +29,34 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Create .env from template
+    - name: Create .env with actual credentials
       run: |
-        Copy-Item .env.example .env
+        @"
+        L8_DB_HOST=${{ secrets.L8_DB_HOST }}
+        L8_DB_PORT=${{ secrets.L8_DB_PORT }}
+        L8_DB_NAME=${{ secrets.L8_DB_NAME }}
+        L8_DB_USER=${{ secrets.L8_DB_USER }}
+        L8_DB_PASS=${{ secrets.L8_DB_PASS }}
+        MYSQL_HOST=${{ secrets.L8_DB_HOST }}
+        MYSQL_PORT=${{ secrets.L8_DB_PORT }}
+        MYSQL_DATABASE=${{ secrets.L8_DB_NAME }}
+        MYSQL_USER=${{ secrets.L8_DB_USER }}
+        MYSQL_PASSWORD=${{ secrets.L8_DB_PASS }}
+        L8_DB_DIALECT=mysql
+        L8_PEPPER=${{ secrets.L8_PEPPER }}
+        L8_PWD_KEY_B64=${{ secrets.L8_PWD_KEY_B64 }}
+        L8_PWD_KEY_ID=k1
+        L8_ARGON_MEMORY_COST=131072
+        L8_ARGON_TIME_COST=3
+        L8_ARGON_THREADS=2
+        L8_SESSION_NAME=layer8_admin
+        L8_SESSION_SECURE=true
+        L8_SESSION_SAMESITE=Lax
+        L8_MAX_FAILED_ATTEMPTS=5
+        L8_LOCKOUT_WINDOW_MIN=15
+        ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+        CLAUDE_API_KEY=${{ secrets.CLAUDE_API_KEY }}
+        "@ | Out-File -FilePath .env -Encoding utf8
 
     - name: Build executable with PyInstaller
       run: |
@@ -136,9 +161,34 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Create .env from template
+    - name: Create .env with actual credentials
       run: |
-        cp .env.example .env
+        cat > .env << EOF
+        L8_DB_HOST=${{ secrets.L8_DB_HOST }}
+        L8_DB_PORT=${{ secrets.L8_DB_PORT }}
+        L8_DB_NAME=${{ secrets.L8_DB_NAME }}
+        L8_DB_USER=${{ secrets.L8_DB_USER }}
+        L8_DB_PASS=${{ secrets.L8_DB_PASS }}
+        MYSQL_HOST=${{ secrets.L8_DB_HOST }}
+        MYSQL_PORT=${{ secrets.L8_DB_PORT }}
+        MYSQL_DATABASE=${{ secrets.L8_DB_NAME }}
+        MYSQL_USER=${{ secrets.L8_DB_USER }}
+        MYSQL_PASSWORD=${{ secrets.L8_DB_PASS }}
+        L8_DB_DIALECT=mysql
+        L8_PEPPER=${{ secrets.L8_PEPPER }}
+        L8_PWD_KEY_B64=${{ secrets.L8_PWD_KEY_B64 }}
+        L8_PWD_KEY_ID=k1
+        L8_ARGON_MEMORY_COST=131072
+        L8_ARGON_TIME_COST=3
+        L8_ARGON_THREADS=2
+        L8_SESSION_NAME=layer8_admin
+        L8_SESSION_SECURE=true
+        L8_SESSION_SAMESITE=Lax
+        L8_MAX_FAILED_ATTEMPTS=5
+        L8_LOCKOUT_WINDOW_MIN=15
+        ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+        CLAUDE_API_KEY=${{ secrets.CLAUDE_API_KEY }}
+        EOF
 
     - name: Build executable with PyInstaller
       run: |
@@ -239,9 +289,34 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Create .env from template
+    - name: Create .env with actual credentials
       run: |
-        cp .env.example .env
+        cat > .env << EOF
+        L8_DB_HOST=${{ secrets.L8_DB_HOST }}
+        L8_DB_PORT=${{ secrets.L8_DB_PORT }}
+        L8_DB_NAME=${{ secrets.L8_DB_NAME }}
+        L8_DB_USER=${{ secrets.L8_DB_USER }}
+        L8_DB_PASS=${{ secrets.L8_DB_PASS }}
+        MYSQL_HOST=${{ secrets.L8_DB_HOST }}
+        MYSQL_PORT=${{ secrets.L8_DB_PORT }}
+        MYSQL_DATABASE=${{ secrets.L8_DB_NAME }}
+        MYSQL_USER=${{ secrets.L8_DB_USER }}
+        MYSQL_PASSWORD=${{ secrets.L8_DB_PASS }}
+        L8_DB_DIALECT=mysql
+        L8_PEPPER=${{ secrets.L8_PEPPER }}
+        L8_PWD_KEY_B64=${{ secrets.L8_PWD_KEY_B64 }}
+        L8_PWD_KEY_ID=k1
+        L8_ARGON_MEMORY_COST=131072
+        L8_ARGON_TIME_COST=3
+        L8_ARGON_THREADS=2
+        L8_SESSION_NAME=layer8_admin
+        L8_SESSION_SECURE=true
+        L8_SESSION_SAMESITE=Lax
+        L8_MAX_FAILED_ATTEMPTS=5
+        L8_LOCKOUT_WINDOW_MIN=15
+        ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+        CLAUDE_API_KEY=${{ secrets.CLAUDE_API_KEY }}
+        EOF
 
     - name: Build executable with PyInstaller
       run: |
