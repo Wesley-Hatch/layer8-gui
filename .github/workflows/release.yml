@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*.*.*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
 
+# Add permissions for GITHUB_TOKEN
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -190,6 +195,8 @@ jobs:
 
     - name: Create Release and Upload Assets
       uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         name: Layer8 GUI ${{ github.ref_name }}
         body: |
