@@ -131,6 +131,7 @@ class DatabaseConnection:
                 logging.info(f"Attempting to connect to MySQL at {self.host}:{self.port}")
 
                 # Use shorter timeout to avoid hanging
+                # Let mysql-connector auto-detect authentication method
                 self.connection = mysql.connector.connect(
                     host=self.host,
                     port=self.port,
@@ -140,8 +141,7 @@ class DatabaseConnection:
                     connect_timeout=8,
                     autocommit=True,
                     raise_on_warnings=False,
-                    charset='utf8mb4',
-                    auth_plugin='mysql_native_password'  # Explicitly specify auth plugin
+                    charset='utf8mb4'
                 )
 
                 if self.connection.is_connected():
