@@ -36,6 +36,7 @@ jobs:
           --windowed `
           --icon="Layer8/Media/Layer8-logo.ico" `
           --add-data "Layer8;Layer8" `
+          --add-data ".env;." `
           --add-data "modern_theme.py;." `
           --add-data "db_connection.py;." `
           --add-data "config.py;." `
@@ -137,6 +138,7 @@ jobs:
           --onefile \
           --windowed \
           --add-data "Layer8:Layer8" \
+          --add-data ".env:." \
           --add-data "modern_theme.py:." \
           --add-data "db_connection.py:." \
           --add-data "config.py:." \
@@ -235,6 +237,7 @@ jobs:
           --onefile \
           --windowed \
           --add-data "Layer8:Layer8" \
+          --add-data ".env:." \
           --add-data "modern_theme.py:." \
           --add-data "db_connection.py:." \
           --add-data "config.py:." \
