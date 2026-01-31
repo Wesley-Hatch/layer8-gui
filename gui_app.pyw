@@ -875,12 +875,43 @@ def main(db_available=None, db_error=None):
     file_menu.add_command(label="Exit", command=root.destroy)
 
     # ADD UPDATER (this creates Help menu with "Check for Updates")
-    updater = add_updater_to_gui(
+    from updater_gui import add_updater_to_gui
+
+    current_version = "1.0.2"  # UPDATE THIS FOR EACH RELEASE
+    updater_gui = add_updater_to_gui(
         root=root,
         menu_bar=menu_bar,
-        current_version="1.0.1",
-        update_url="https://api.github.com/repos/Wesley-Hatch/Layer8-GUI/releases/latest"
+        current_version=current_version,
+        update_url="https://api.github.com/repos/Wesley-Hatch/layer8-gui/releases/latest"  # UPDATE YOUR_USERNAME
     )
+
+    # Check for updates in background (silent check on startup)
+    def check_updates_background():
+        """Check for updates silently and notify user if available"""
+        try:
+            import time
+            time.sleep(3)  # Wait 3 seconds after app starts
+
+            if updater_gui.check_for_updates_silent():
+                # Update available - show notification
+                def show_notification():
+                    response = messagebox.askyesno(
+                        "Update Available",
+                        f"Layer8 v{updater_gui.updater.latest_version} is available!\n"
+                        f"Current version: {current_version}\n\n"
+                        "Would you like to download and install it now?"
+                    )
+
+                    if response:
+                        updater_gui.download_and_install_with_progress()
+
+                root.after(0, show_notification)
+        except Exception as e:
+            logging.error(f"Background update check failed: {e}")
+
+    # Start background checker
+    threading.Thread(target=check_updates_background, daemon=True).start()
+    logging.info(f"Auto-update enabled (current version: {current_version})")
     
     # Delay overrideredirect to ensure window is properly initialized
     def apply_overrideredirect():
