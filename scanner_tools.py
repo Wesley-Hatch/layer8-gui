@@ -5,7 +5,12 @@ import subprocess
 import requests
 import os
 import shutil
-import pandas as pd
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    pd = None
 import hashlib
 from scapy.all import sniff, conf, send, wrpcap
 try:
@@ -2565,6 +2570,9 @@ class ScannerTools:
             return False
         
         try:
+            if not PANDAS_AVAILABLE:
+                self.log("[!] Pandas not available - cannot export to Excel", is_error=True)
+                return False
             df = pd.DataFrame(self.last_findings)
             df.to_excel(filename, index=False)
             self.log(f"[+] Scan results exported to {filename}")
@@ -2577,7 +2585,11 @@ class ScannerTools:
         if not hasattr(self, 'last_monitor_data') or not self.last_monitor_data:
             self.log("[!] No traffic data available to export.", is_error=True)
             return False
-        
+
+        if not PANDAS_AVAILABLE:
+            self.log("[!] Pandas not available - cannot export to Excel", is_error=True)
+            return False
+
         try:
             df = pd.DataFrame(self.last_monitor_data)
             df.to_excel(filename, index=False)
