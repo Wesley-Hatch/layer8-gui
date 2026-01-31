@@ -42,12 +42,55 @@ jobs:
           --add-data "scanner_tools.py;." `
           --add-data "ai_analyzer.py;." `
           --add-data "updater.py;." `
+          --add-data "updater_gui.py;." `
+          --hidden-import=tkinter `
+          --hidden-import=tkinter.ttk `
+          --hidden-import=tkinter.font `
+          --hidden-import=tkinter.scrolledtext `
+          --hidden-import=tkinter.messagebox `
+          --hidden-import=tkinter.filedialog `
           --hidden-import=PIL `
+          --hidden-import=PIL.Image `
+          --hidden-import=PIL.ImageTk `
+          --hidden-import=PIL._imaging `
           --hidden-import=mysql.connector `
-          --hidden-import=dotenv `
+          --hidden-import=mysql.connector.pooling `
+          --hidden-import=sqlite3 `
           --hidden-import=nacl `
+          --hidden-import=nacl.secret `
+          --hidden-import=nacl.utils `
+          --hidden-import=nacl.encoding `
           --hidden-import=argon2 `
+          --hidden-import=argon2.low_level `
+          --hidden-import=argon2.exceptions `
+          --hidden-import=Crypto `
+          --hidden-import=Crypto.Cipher `
+          --hidden-import=Crypto.Cipher.AES `
+          --hidden-import=Crypto.Random `
+          --hidden-import=dotenv `
+          --hidden-import=scapy `
+          --hidden-import=scapy.all `
+          --hidden-import=scapy.layers.inet `
+          --hidden-import=scapy.layers.dns `
+          --hidden-import=scapy.layers.l2 `
+          --hidden-import=requests `
           --hidden-import=anthropic `
+          --hidden-import=pandas `
+          --hidden-import=numpy `
+          --hidden-import=urllib `
+          --hidden-import=urllib.request `
+          --hidden-import=json `
+          --hidden-import=base64 `
+          --hidden-import=hashlib `
+          --hidden-import=pathlib `
+          --hidden-import=threading `
+          --hidden-import=socket `
+          --hidden-import=subprocess `
+          --hidden-import=shutil `
+          --hidden-import=tempfile `
+          --hidden-import=zipfile `
+          --hidden-import=logging `
+          --hidden-import=logging.handlers `
           gui_app.pyw
 
     - name: Create version info
@@ -100,12 +143,55 @@ jobs:
           --add-data "scanner_tools.py:." \
           --add-data "ai_analyzer.py:." \
           --add-data "updater.py:." \
+          --add-data "updater_gui.py:." \
+          --hidden-import=tkinter \
+          --hidden-import=tkinter.ttk \
+          --hidden-import=tkinter.font \
+          --hidden-import=tkinter.scrolledtext \
+          --hidden-import=tkinter.messagebox \
+          --hidden-import=tkinter.filedialog \
           --hidden-import=PIL \
+          --hidden-import=PIL.Image \
+          --hidden-import=PIL.ImageTk \
+          --hidden-import=PIL._imaging \
           --hidden-import=mysql.connector \
-          --hidden-import=dotenv \
+          --hidden-import=mysql.connector.pooling \
+          --hidden-import=sqlite3 \
           --hidden-import=nacl \
+          --hidden-import=nacl.secret \
+          --hidden-import=nacl.utils \
+          --hidden-import=nacl.encoding \
           --hidden-import=argon2 \
+          --hidden-import=argon2.low_level \
+          --hidden-import=argon2.exceptions \
+          --hidden-import=Crypto \
+          --hidden-import=Crypto.Cipher \
+          --hidden-import=Crypto.Cipher.AES \
+          --hidden-import=Crypto.Random \
+          --hidden-import=dotenv \
+          --hidden-import=scapy \
+          --hidden-import=scapy.all \
+          --hidden-import=scapy.layers.inet \
+          --hidden-import=scapy.layers.dns \
+          --hidden-import=scapy.layers.l2 \
+          --hidden-import=requests \
           --hidden-import=anthropic \
+          --hidden-import=pandas \
+          --hidden-import=numpy \
+          --hidden-import=urllib \
+          --hidden-import=urllib.request \
+          --hidden-import=json \
+          --hidden-import=base64 \
+          --hidden-import=hashlib \
+          --hidden-import=pathlib \
+          --hidden-import=threading \
+          --hidden-import=socket \
+          --hidden-import=subprocess \
+          --hidden-import=shutil \
+          --hidden-import=tempfile \
+          --hidden-import=zipfile \
+          --hidden-import=logging \
+          --hidden-import=logging.handlers \
           gui_app.pyw
 
     - name: Create version info
@@ -155,12 +241,55 @@ jobs:
           --add-data "scanner_tools.py:." \
           --add-data "ai_analyzer.py:." \
           --add-data "updater.py:." \
+          --add-data "updater_gui.py:." \
+          --hidden-import=tkinter \
+          --hidden-import=tkinter.ttk \
+          --hidden-import=tkinter.font \
+          --hidden-import=tkinter.scrolledtext \
+          --hidden-import=tkinter.messagebox \
+          --hidden-import=tkinter.filedialog \
           --hidden-import=PIL \
+          --hidden-import=PIL.Image \
+          --hidden-import=PIL.ImageTk \
+          --hidden-import=PIL._imaging \
           --hidden-import=mysql.connector \
-          --hidden-import=dotenv \
+          --hidden-import=mysql.connector.pooling \
+          --hidden-import=sqlite3 \
           --hidden-import=nacl \
+          --hidden-import=nacl.secret \
+          --hidden-import=nacl.utils \
+          --hidden-import=nacl.encoding \
           --hidden-import=argon2 \
+          --hidden-import=argon2.low_level \
+          --hidden-import=argon2.exceptions \
+          --hidden-import=Crypto \
+          --hidden-import=Crypto.Cipher \
+          --hidden-import=Crypto.Cipher.AES \
+          --hidden-import=Crypto.Random \
+          --hidden-import=dotenv \
+          --hidden-import=scapy \
+          --hidden-import=scapy.all \
+          --hidden-import=scapy.layers.inet \
+          --hidden-import=scapy.layers.dns \
+          --hidden-import=scapy.layers.l2 \
+          --hidden-import=requests \
           --hidden-import=anthropic \
+          --hidden-import=pandas \
+          --hidden-import=numpy \
+          --hidden-import=urllib \
+          --hidden-import=urllib.request \
+          --hidden-import=json \
+          --hidden-import=base64 \
+          --hidden-import=hashlib \
+          --hidden-import=pathlib \
+          --hidden-import=threading \
+          --hidden-import=socket \
+          --hidden-import=subprocess \
+          --hidden-import=shutil \
+          --hidden-import=tempfile \
+          --hidden-import=zipfile \
+          --hidden-import=logging \
+          --hidden-import=logging.handlers \
           gui_app.pyw
 
     - name: Create version info
