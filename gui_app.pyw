@@ -877,7 +877,7 @@ def main(db_available=None, db_error=None):
     # ADD UPDATER (this creates Help menu with "Check for Updates")
     from updater_gui import add_updater_to_gui
 
-    current_version = "1.2.4"  # UPDATE THIS FOR EACH RELEASE
+    current_version = "1.2.5"  # UPDATE THIS FOR EACH RELEASE
     updater_gui = add_updater_to_gui(
         root=root,
         menu_bar=menu_bar,

@@ -109,6 +109,10 @@ jobs:
           --hidden-import=anthropic `
           --hidden-import=pandas `
           --hidden-import=numpy `
+          --hidden-import=numpy.core `
+          --hidden-import=numpy.core._multiarray_umath `
+          --collect-submodules=pandas `
+          --collect-submodules=numpy `
           --hidden-import=urllib `
           --hidden-import=urllib.request `
           --hidden-import=json `
@@ -242,6 +246,10 @@ jobs:
           --hidden-import=anthropic \
           --hidden-import=pandas \
           --hidden-import=numpy \
+          --hidden-import=numpy.core \
+          --hidden-import=numpy.core._multiarray_umath \
+          --collect-submodules=pandas \
+          --collect-submodules=numpy \
           --hidden-import=urllib \
           --hidden-import=urllib.request \
           --hidden-import=json \
@@ -372,6 +380,10 @@ jobs:
           --hidden-import=anthropic \
           --hidden-import=pandas \
           --hidden-import=numpy \
+          --hidden-import=numpy.core \
+          --hidden-import=numpy.core._multiarray_umath \
+          --collect-submodules=pandas \
+          --collect-submodules=numpy \
           --hidden-import=urllib \
           --hidden-import=urllib.request \
           --hidden-import=json \
