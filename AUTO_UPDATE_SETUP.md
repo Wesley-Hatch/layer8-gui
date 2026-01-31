@@ -27,7 +27,7 @@ current_version = "1.0.2"  # ← UPDATE THIS FOR EACH RELEASE
 
 #### 2. GitHub Username
 ```python
-update_url = "https://api.github.com/repos/Wesley-Hatch/layer8-gui/releases/latest"
+update_url = "https://api.github.com/repos/Wesley-Hatch /layer8-gui/releases/latest"
                                            ^^^^^^^^^^^^
                                            Replace with your actual GitHub username
 ```

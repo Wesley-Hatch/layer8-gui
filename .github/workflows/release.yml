@@ -29,6 +29,10 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
+    - name: Create .env from template
+      run: |
+        Copy-Item .env.example .env
+
     - name: Build executable with PyInstaller
       run: |
         pyinstaller --name "Layer8-GUI" `
@@ -132,6 +136,10 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
+    - name: Create .env from template
+      run: |
+        cp .env.example .env
+
     - name: Build executable with PyInstaller
       run: |
         pyinstaller --name "Layer8-GUI" \
@@ -230,6 +238,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
+
+    - name: Create .env from template
+      run: |
+        cp .env.example .env
 
     - name: Build executable with PyInstaller
       run: |
