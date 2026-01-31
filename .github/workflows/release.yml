@@ -11,10 +11,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
@@ -60,7 +60,7 @@ jobs:
         Compress-Archive -Path * -DestinationPath ../layer8-gui-windows.zip
 
     - name: Upload Windows artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: layer8-gui-windows
         path: layer8-gui-windows.zip
@@ -70,10 +70,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
@@ -115,7 +115,7 @@ jobs:
         zip -r ../layer8-gui-linux.zip *
 
     - name: Upload Linux artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: layer8-gui-linux
         path: layer8-gui-linux.zip
@@ -125,10 +125,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
@@ -170,7 +170,7 @@ jobs:
         zip -r ../layer8-gui-macos.zip *
 
     - name: Upload macOS artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: layer8-gui-macos
         path: layer8-gui-macos.zip
@@ -181,19 +181,17 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
-
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: actions/download-artifact@v4
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Layer8 GUI ${{ github.ref_name }}
+        path: artifacts
+
+    - name: Create Release and Upload Assets
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Layer8 GUI ${{ github.ref_name }}
         body: |
           ## Layer8 Security Platform ${{ github.ref_name }}
 
@@ -219,35 +217,10 @@ jobs:
 
           ---
           🤖 Built automatically with GitHub Actions
+        files: |
+          artifacts/layer8-gui-windows/layer8-gui-windows.zip
+          artifacts/layer8-gui-linux/layer8-gui-linux.zip
+          artifacts/layer8-gui-macos/layer8-gui-macos.zip
         draft: false
         prerelease: false
-
-    - name: Upload Windows Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./layer8-gui-windows/layer8-gui-windows.zip
-        asset_name: layer8-gui-windows.zip
-        asset_content_type: application/zip
-
-    - name: Upload Linux Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./layer8-gui-linux/layer8-gui-linux.zip
-        asset_name: layer8-gui-linux.zip
-        asset_content_type: application/zip
-
-    - name: Upload macOS Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./layer8-gui-macos/layer8-gui-macos.zip
-        asset_name: layer8-gui-macos.zip
-        asset_content_type: application/zip
+        fail_on_unmatched_files: true
