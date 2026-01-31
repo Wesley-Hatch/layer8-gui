@@ -1,0 +1,29 @@
+# Layer8 Security Platform - Python Dependencies
+
+# GUI Framework
+Pillow>=10.0.0
+
+# Database
+mysql-connector-python>=8.0.33
+python-dotenv>=1.0.0
+
+# Cryptography
+PyNaCl>=1.5.0
+argon2-cffi>=21.3.0
+pycryptodome>=3.18.0
+
+# API / Cloud
+anthropic>=0.7.0
+requests>=2.31.0
+
+# Networking / Security Tools
+scapy>=2.5.0
+psutil>=5.9.5
+netifaces>=0.11.0
+
+# Optional: Web Scraping / Analysis
+beautifulsoup4>=4.12.0
+lxml>=4.9.3
+
+# Build Tools (for development)
+# pyinstaller>=5.13.0  # Uncomment for building executables

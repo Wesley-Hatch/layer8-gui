@@ -1,0 +1,126 @@
+# Layer8 GUI - .gitignore
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+*.key
+C:/secure/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Virtual Environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+gui_startup.log
+gui_app.log
+database_connection.log
+updater.log
+
+# Databases
+*.sqlite
+*.sqlite3
+*.db
+data/*.sqlite
+data/*.db
+
+# Backups
+backups/
+*.backup
+*.bak
+
+# Temporary files
+temp/
+tmp/
+temp_update/
+*.tmp
+
+# Version control
+version.json
+update_config.json
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Documentation builds
+docs/_build/
+site/
+
+# Sensitive data
+credentials.json
+secrets.yaml
+api_keys.txt
+
+# User-specific
+user_data/
+downloads/
+scans/
+
+# Build artifacts
+*.exe
+*.app
+*.dmg
+*.msi
+*.deb
+*.rpm
+
+# Compiled
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Distribution
+*.zip
+*.tar.gz
+*.rar
+release/
