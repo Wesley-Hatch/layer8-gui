@@ -35,16 +35,32 @@ try:
 
     # Priority 1: PyInstaller temp directory (where bundled files are extracted)
     if getattr(sys, 'frozen', False):
+        logging.info("Running as frozen executable (PyInstaller)")
         # Get the PyInstaller temp directory
         if hasattr(sys, '_MEIPASS'):
             # PyInstaller creates a temp folder and stores path in _MEIPASS
             bundle_dir = Path(sys._MEIPASS)
+            logging.info(f"PyInstaller _MEIPASS directory: {bundle_dir}")
             env_path = bundle_dir / '.env'
+            logging.info(f"Checking for .env at: {env_path}")
+            logging.info(f".env exists: {env_path.exists()}")
             if env_path.exists():
-                load_dotenv(env_path)
+                result = load_dotenv(env_path)
+                logging.info(f"load_dotenv() returned: {result}")
                 logging.info(f"Loaded configuration from PyInstaller bundle: {env_path}")
+                # Print first few characters of loaded vars for debugging
+                import os
+                logging.info(f"L8_DB_HOST after load: {os.getenv('L8_DB_HOST', 'NOT SET')}")
             else:
                 logging.warning(f".env not found in PyInstaller bundle: {env_path}")
+                # List files in bundle directory
+                try:
+                    files = list(bundle_dir.glob('*'))
+                    logging.info(f"Files in bundle dir: {[f.name for f in files[:10]]}")
+                except Exception as e:
+                    logging.error(f"Error listing bundle dir: {e}")
+        else:
+            logging.warning("sys._MEIPASS not found")
 
         # Also check next to executable (for user-provided .env overrides)
         exe_dir = Path(sys.executable).parent

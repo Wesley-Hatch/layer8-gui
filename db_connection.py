@@ -161,7 +161,7 @@ class DatabaseConnection:
             logging.error(self.last_error)
             return False, self.last_error
 
-    def _parse_mysql_error(self, error: Error) -> str:
+    def _parse_mysql_error(self, error: pymysql.Error) -> str:
         """Parse MySQL error and return user-friendly message"""
         error_messages = {
             2003: "Cannot connect to database server. Check if Remote MySQL is enabled in Hostinger and your IP is whitelisted.",
@@ -172,11 +172,13 @@ class DatabaseConnection:
             1146: "Table doesn't exist in the database.",
         }
 
-        friendly = error_messages.get(error.errno)
+        errno = error.args[0] if error.args else 0
+        friendly = error_messages.get(errno)
         if friendly:
-            return f"{friendly} (Error {error.errno}: {error.msg})"
-        
-        return f"Database error {error.errno}: {error.msg}"
+            errmsg = error.args[1] if len(error.args) > 1 else str(error)
+            return f"{friendly} (Error {errno}: {errmsg})"
+
+        return f"Database error: {str(error)}"
 
     # =========================================================================
     # PASSWORD HASHING & ENCRYPTION (Synchronized with PHP)
