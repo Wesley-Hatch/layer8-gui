@@ -11,7 +11,13 @@ from mysql.connector import Error
 import sqlite3
 import logging
 import os
+import sys
 from typing import Optional, Tuple, Dict, Any
+
+# Force pure Python implementation for PyInstaller compatibility
+# The C extension tries to load DLLs that don't exist in frozen apps
+if getattr(sys, 'frozen', False):
+    os.environ['MYSQL_CONNECTOR_PYTHON_USE_PURE'] = '1'
 
 # Import unified configuration
 try:
