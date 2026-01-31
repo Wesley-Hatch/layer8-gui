@@ -490,10 +490,8 @@ class DatabaseConnection:
                 return False, error
 
         try:
-            if self.dialect == 'sqlite':
-                cursor = self.connection.cursor()
-            else:
-                cursor = self.connection.cursor(dictionary=True)
+            # Get cursor (pymysql already configured with DictCursor)
+            cursor = self.connection.cursor()
 
             user = None
             
