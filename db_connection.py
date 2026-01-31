@@ -554,7 +554,7 @@ class DatabaseConnection:
                 return False, "Invalid username or password"
 
         except Exception as e:
-            if self.dialect == 'mysql' and isinstance(e, Error):
+            if self.dialect == 'mysql' and isinstance(e, pymysql.Error):
                 error_msg = self._parse_mysql_error(e)
             else:
                 error_msg = f"Unexpected error during login: {str(e)}"
@@ -623,13 +623,14 @@ class DatabaseConnection:
             return True, "User created successfully"
 
         except Exception as e:
-            if self.dialect == 'mysql' and isinstance(e, Error):
-                if e.errno == 1062:  # Duplicate entry
+            if self.dialect == 'mysql' and isinstance(e, pymysql.Error):
+                errno = e.args[0] if e.args else 0
+                if errno == 1062:  # Duplicate entry
                     return False, "Username already exists"
                 error_msg = self._parse_mysql_error(e)
             else:
                 error_msg = f"User creation error: {str(e)}"
-            
+
             logging.error(error_msg)
             return False, error_msg
 
@@ -712,7 +713,7 @@ class DatabaseConnection:
                 return True, "Table already exists"
 
         except Exception as e:
-            if self.dialect == 'mysql' and isinstance(e, Error):
+            if self.dialect == 'mysql' and isinstance(e, pymysql.Error):
                 error_msg = self._parse_mysql_error(e)
             else:
                 error_msg = f"Table creation error: {str(e)}"
