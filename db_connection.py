@@ -141,7 +141,7 @@ class DatabaseConnection:
                     autocommit=True,
                     raise_on_warnings=False,
                     charset='utf8mb4',
-                    use_pure=True  # Use pure Python implementation
+                    auth_plugin='mysql_native_password'  # Explicitly specify auth plugin
                 )
 
                 if self.connection.is_connected():
