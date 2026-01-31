@@ -32,27 +32,39 @@ from typing import Optional
 try:
     from dotenv import load_dotenv
     import sys
-    
-    # Priority 1: Next to the executable (if frozen)
+
+    # Priority 1: PyInstaller temp directory (where bundled files are extracted)
     if getattr(sys, 'frozen', False):
+        # Get the PyInstaller temp directory
+        if hasattr(sys, '_MEIPASS'):
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            bundle_dir = Path(sys._MEIPASS)
+            env_path = bundle_dir / '.env'
+            if env_path.exists():
+                load_dotenv(env_path)
+                logging.info(f"Loaded configuration from PyInstaller bundle: {env_path}")
+            else:
+                logging.warning(f".env not found in PyInstaller bundle: {env_path}")
+
+        # Also check next to executable (for user-provided .env overrides)
         exe_dir = Path(sys.executable).parent
         env_path = exe_dir / '.env'
         if env_path.exists():
-            load_dotenv(env_path)
-            logging.info(f"Loaded configuration from {env_path}")
-    
-    # Priority 2: In the same directory as this file (internal in bundle or dev)
+            load_dotenv(env_path, override=True)  # Override bundled config
+            logging.info(f"Loaded configuration from executable directory: {env_path}")
+
+    # Priority 2: In the same directory as this file (dev environment)
     env_path = Path(__file__).parent / '.env'
     if env_path.exists():
-        load_dotenv(env_path, override=False) # Don't override if already loaded from next to exe
+        load_dotenv(env_path, override=False)
         logging.info(f"Loaded configuration from {env_path}")
-    
-    # Priority 3: Parent directory
+
+    # Priority 3: Parent directory (dev environment fallback)
     env_path = Path(__file__).parent.parent / '.env'
     if env_path.exists():
         load_dotenv(env_path, override=False)
         logging.info(f"Loaded configuration from {env_path}")
-        
+
 except ImportError:
     logging.warning("python-dotenv not installed, using environment variables only")
 
