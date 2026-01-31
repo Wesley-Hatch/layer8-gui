@@ -6,18 +6,13 @@ This module handles MySQL database connections and user authentication
 with secure Argon2id hashing and AES-256-GCM encryption.
 """
 
-import mysql.connector
-from mysql.connector import Error
+import pymysql
+import pymysql.cursors
 import sqlite3
 import logging
 import os
 import sys
 from typing import Optional, Tuple, Dict, Any
-
-# Force pure Python implementation for PyInstaller compatibility
-# The C extension tries to load DLLs that don't exist in frozen apps
-if getattr(sys, 'frozen', False):
-    os.environ['MYSQL_CONNECTOR_PYTHON_USE_PURE'] = '1'
 
 # Import unified configuration
 try:
@@ -136,9 +131,8 @@ class DatabaseConnection:
             else:
                 logging.info(f"Attempting to connect to MySQL at {self.host}:{self.port}")
 
-                # Use shorter timeout to avoid hanging
-                # Let mysql-connector auto-detect authentication method
-                self.connection = mysql.connector.connect(
+                # Use PyMySQL (pure Python, PyInstaller compatible)
+                self.connection = pymysql.connect(
                     host=self.host,
                     port=self.port,
                     user=self.user,
@@ -146,24 +140,24 @@ class DatabaseConnection:
                     database=self.database,
                     connect_timeout=8,
                     autocommit=True,
-                    raise_on_warnings=False,
-                    charset='utf8mb4'
+                    charset='utf8mb4',
+                    cursorclass=pymysql.cursors.DictCursor
                 )
 
-                if self.connection.is_connected():
-                    db_info = self.connection.get_server_info()
-                    logging.info(f"Successfully connected to MySQL Server version {db_info}")
+                if self.connection.open:
+                    logging.info(f"Successfully connected to MySQL Server")
                     return True, None
                 else:
                     self.last_error = "Connection object created but not connected"
                     logging.error(self.last_error)
                     return False, self.last_error
 
+        except pymysql.Error as e:
+            self.last_error = f"Database error {e.args[0]}: {e.args[1] if len(e.args) > 1 else str(e)}"
+            logging.error(self.last_error)
+            return False, self.last_error
         except Exception as e:
-            if self.dialect == 'mysql' and isinstance(e, Error):
-                self.last_error = self._parse_mysql_error(e)
-            else:
-                self.last_error = f"Database connection error: {str(e)}"
+            self.last_error = f"Database connection error: {str(e)}"
             logging.error(self.last_error)
             return False, self.last_error
 
