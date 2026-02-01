@@ -15,7 +15,7 @@ from datetime import datetime
 
 # Configuration
 APP_NAME = "Layer8-GUI"
-VERSION = "1.2.6"  # Update this for each release
+VERSION = "1.2.7"  # Update this for each release
 ICON_PATH = "Layer8/Media/Layer8-logo.ico"
 MAIN_SCRIPT = "gui_app.pyw"
 

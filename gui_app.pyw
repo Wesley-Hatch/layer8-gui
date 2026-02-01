@@ -280,11 +280,11 @@ class DebugLauncher:
             missing_modules = []
             
             try:
-                import mysql.connector
-                self.log("✓ mysql-connector-python is installed", "SUCCESS")
+                import pymysql
+                self.log("✓ pymysql is installed", "SUCCESS")
             except ImportError:
-                self.log("✗ mysql-connector-python NOT installed!", "ERROR")
-                missing_modules.append("mysql-connector-python")
+                self.log("✗ pymysql NOT installed!", "ERROR")
+                missing_modules.append("pymysql")
             
             try:
                 import nacl.secret
@@ -877,7 +877,7 @@ def main(db_available=None, db_error=None):
     # ADD UPDATER (this creates Help menu with "Check for Updates")
     from updater_gui import add_updater_to_gui
 
-    current_version = "1.2.6"  # UPDATE THIS FOR EACH RELEASE
+    current_version = "1.2.7"  # UPDATE THIS FOR EACH RELEASE
     updater_gui = add_updater_to_gui(
         root=root,
         menu_bar=menu_bar,
