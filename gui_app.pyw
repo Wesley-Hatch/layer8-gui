@@ -1215,19 +1215,61 @@ def main(db_available=None, db_error=None):
                 db = DatabaseConnection()
                 success, error = db.connect()
                 if success:
-                    # pymysql connections are already configured with DictCursor
-                    # in DatabaseConnection.connect(); the 'dictionary=' kwarg is
-                    # mysql-connector-only and raises on pymysql.
-                    cursor = db.connection.cursor()
-                    cursor.execute("SELECT username, email, is_admin FROM user_logins")
-                    users = cursor.fetchall()
+                    # Read whichever accounts table exists, mirroring db_connection's
+                    # login order: PHP 'users' (role-based) first, then the Python
+                    # 'user_logins' (is_admin) table. pymysql is already a DictCursor.
+                    users = []
+                    source_table = None
+
+                    # 1) PHP 'users' table: username, email, role
+                    try:
+                        cursor = db.connection.cursor()
+                        cursor.execute("SELECT username, email, role FROM users")
+                        rows = cursor.fetchall() or []
+                        cursor.close()
+                        if rows:
+                            source_table = "users"
+                            for r in rows:
+                                role = str(r.get('role', '') or '').lower()
+                                users.append({
+                                    'username': r.get('username', 'N/A'),
+                                    'email': r.get('email', 'N/A'),
+                                    'is_admin': role in ('admin', 'superadmin', 'staff'),
+                                })
+                    except Exception:
+                        pass
+
+                    # 2) Fallback: Python 'user_logins' table: username, email, is_admin
+                    if not users:
+                        try:
+                            cursor = db.connection.cursor()
+                            cursor.execute("SELECT username, email, is_admin FROM user_logins")
+                            rows = cursor.fetchall() or []
+                            cursor.close()
+                            if rows:
+                                source_table = "user_logins"
+                                for r in rows:
+                                    users.append({
+                                        'username': r.get('username', 'N/A'),
+                                        'email': r.get('email', 'N/A'),
+                                        'is_admin': bool(r.get('is_admin', 0)),
+                                    })
+                        except Exception:
+                            pass
+
                     db.close()
-                    
+
                     user_list_box.config(state="normal")
-                    user_list_box.insert("1.0", f"{'Username':<15} {'Email':<20} {'Admin':<5}\n")
-                    user_list_box.insert("2.0", "-"*50 + "\n")
-                    for u in users:
-                        user_list_box.insert(tk.END, f"{u.get('username', 'N/A'):<15} {u.get('email', 'N/A'):<20} {str(bool(u.get('is_admin', 0))):<5}\n")
+                    header = f"{'Username':<15} {'Email':<20} {'Admin':<5}"
+                    if source_table:
+                        header += f"   (from '{source_table}')"
+                    user_list_box.insert("1.0", header + "\n")
+                    user_list_box.insert("2.0", "-" * 60 + "\n")
+                    if users:
+                        for u in users:
+                            user_list_box.insert(tk.END, f"{u['username']:<15} {u['email']:<20} {str(bool(u['is_admin'])):<5}\n")
+                    else:
+                        user_list_box.insert(tk.END, "(No accounts found in 'users' or 'user_logins'.)\n")
                     user_list_box.config(state="disabled")
                 else:
                     messagebox.showerror("Error", "Failed to connect to MySQL database.")
