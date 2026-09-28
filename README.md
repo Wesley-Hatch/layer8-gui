@@ -63,21 +63,45 @@ Layer8 is a comprehensive security platform that provides network analysis, vuln
 
 ### Run from Source
 
-```bash
-# Clone repository
+**Prerequisites (all platforms)**
+
+- **Python 3.11 or 3.12** — recommended. Newer releases (3.13+) may not yet ship
+  wheels for every dependency. Check with `python --version` (or `python3 --version`).
+- **git**
+- **For the live packet-capture tools** (Sniffer, Traffic Monitor, Packet Interceptor,
+  WiFi Analyzer) you also need a capture driver, and the app must run elevated:
+  - **Windows:** install [Npcap](https://npcap.com/#download) with *"Install Npcap in
+    WinPcap API-compatible Mode"* checked, then launch the app **as Administrator**.
+  - **Linux:** `sudo apt install libpcap-dev tcpdump` (Debian/Ubuntu) and run with `sudo`.
+  - **macOS:** libpcap is built in; run the capture tools with `sudo`.
+
+**Windows (PowerShell)**
+
+```powershell
 git clone https://github.com/Wesley-Hatch/layer8-gui.git
 cd layer8-gui
-
-# Install dependencies
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
-# Configure environment (optional)
-cp .env.example .env
-# Edit .env with your database credentials
-
-# Run
 python gui_app.pyw
 ```
+
+**Linux / macOS**
+
+```bash
+git clone https://github.com/Wesley-Hatch/layer8-gui.git
+cd layer8-gui
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python3 gui_app.pyw
+```
+
+On first launch a **Setup Wizard** collects your database details (or lets you skip for
+offline mode) and stores them securely in your OS keychain — Windows Credential Manager,
+macOS Keychain, or Linux Secret Service — so you are not asked again. To preseed the
+configuration instead, copy `.env.example` to `.env` and fill it in (see
+[Configuration](#-configuration)).
 
 ---
 
@@ -120,30 +144,33 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.11 or 3.12 (3.13+ may lack wheels for some dependencies)
 - pip
 - Git
 
 ### Setup Development Environment
 
+**Linux / macOS**
+
 ```bash
-# Clone repo
 git clone https://github.com/Wesley-Hatch/layer8-gui.git
 cd layer8-gui
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# or
-venv\Scripts\activate  # Windows
-
-# Install dependencies
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+pip install pyinstaller pytest black flake8   # dev tools
+python3 gui_app.pyw
+```
 
-# Install dev dependencies
-pip install pyinstaller pytest black flake8
+**Windows (PowerShell)**
 
-# Run in development mode
+```powershell
+git clone https://github.com/Wesley-Hatch/layer8-gui.git
+cd layer8-gui
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pip install pyinstaller pytest black flake8   # dev tools
 python gui_app.pyw
 ```
 
@@ -243,7 +270,7 @@ See [requirements.txt](requirements.txt) for complete list.
 
 Key dependencies:
 - `Pillow` - Image processing
-- `mysql-connector-python` - Database connectivity
+- `pymysql` - Database connectivity (pure-Python MySQL client)
 - `PyNaCl` - Cryptography
 - `argon2-cffi` - Password hashing
 - `anthropic` - AI analysis

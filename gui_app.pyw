@@ -1691,6 +1691,63 @@ def main(db_available=None, db_error=None):
             tool_log_box.insert("1.0", f"[*] {tool_name} module loaded.\n[*] Ready to initialize scan.\n")
             tool_log_box.config(state="disabled")
 
+            # Tab 3: Command Preview / Audit trail
+            cmd_tab = tk.Frame(notebook, bg="#1e1e1e")
+            notebook.add(cmd_tab, text="  COMMAND PREVIEW  ")
+            cmd_box = tk.Text(cmd_tab, bg="#000000", fg="#00ff00", font=("Consolas", 9), bd=0,
+                              height=18, padx=10, pady=5, highlightthickness=0, wrap="word")
+            cmd_box.tag_configure("hdr", foreground="#00ff00", font=("Consolas", 9, "bold"))
+            cmd_box.tag_configure("plan", foreground="#f1c40f")
+            cmb_vscroll = ttk.Scrollbar(cmd_tab, orient="vertical", style="Vertical.TScrollbar", command=cmd_box.yview)
+            cmb_vscroll.pack(side="right", fill="y")
+            cmd_box.pack(side="left", fill="both", expand=True)
+            cmd_box.config(yscrollcommand=cmb_vscroll.set)
+
+            def _preview_opts():
+                opts = {}
+                try: opts["intensity"] = int(intensity_scale.get())
+                except Exception: opts["intensity"] = 3
+                opts["scan_type"] = scan_type_var.get()
+                opts["brute_type"] = brute_type_var.get()
+                opts["audit_type"] = audit_type_var.get()
+                opts["payload_list"] = payload_list_var.get()
+                opts["command_template"] = custom_cmd_var.get()
+                try:
+                    opts["duration_seconds"] = (int(hours_var.get()) * 3600) + (int(mins_var.get()) * 60) or 300
+                except Exception:
+                    opts["duration_seconds"] = 300
+                return opts
+
+            def refresh_preview():
+                try:
+                    tgt = tool_target_entry.get() or "<target>"
+                    planned = scanner.preview_command(tool_name, tgt, **_preview_opts())
+                    cmd_box.config(state="normal")
+                    cmd_box.delete("1.0", tk.END)
+                    cmd_box.insert(tk.END, "Command that runs when you press Execute:\n\n", "hdr")
+                    cmd_box.insert(tk.END, f"  $ {planned}\n\n", "plan")
+                    if scanner.command_log:
+                        cmd_box.insert(tk.END, "Commands executed (this session):\n", "hdr")
+                        for e in scanner.command_log:
+                            cmd_box.insert(tk.END, f"  [{e['time']}]  {e['command']}\n")
+                    cmd_box.config(state="disabled")
+                except Exception:
+                    pass
+
+            def on_command_recorded(entry):
+                def _add():
+                    try:
+                        cmd_box.config(state="normal")
+                        cmd_box.insert(tk.END, f"  [{entry['time']}]  {entry['command']}\n")
+                        cmd_box.see(tk.END)
+                        cmd_box.config(state="disabled")
+                    except Exception:
+                        pass
+                root.after(0, _add)
+
+            notebook.bind("<<NotebookTabChanged>>", lambda e: refresh_preview())
+            refresh_preview()
+
             def tool_log_to_box(message, is_error=False):
                 def append():
                     try:
@@ -1734,18 +1791,8 @@ def main(db_available=None, db_error=None):
                                    cursor="hand2", command=export_general)
             export_btn.pack(side="right", padx=10)
 
-            # Controls (Start/Stop) - Moved below results
-            controls_frame = tk.Frame(root, bg=bg_color.get())
-            controls_id = canvas.create_window(212, 700, window=controls_frame, anchor="center")
-            centered_tool_items.append(controls_id)
-
-            run_btn = tk.Button(controls_frame, text="RUN SECURITY SCAN", bg="#00ff00", fg="#000000", font=("Segoe UI", 10, "bold"), 
-                                width=25, bd=0, activebackground="#00cc00", cursor="hand2")
-            run_btn.pack(side="left", padx=10, ipady=8)
-            
-            stop_btn = tk.Button(controls_frame, text="TERMINATE", bg="#e74c3c", fg="#ffffff", font=("Segoe UI", 10, "bold"), 
-                                 width=15, bd=0, activebackground="#c0392b", cursor="hand2", state="disabled")
-            stop_btn.pack(side="left", padx=10, ipady=8)
+            # (The Execute / Terminate controls are created in btn_frame below;
+            #  the old duplicate "RUN SECURITY SCAN" control row was removed.)
 
             initialized_columns = [False]
             current_columns = []
@@ -1843,12 +1890,17 @@ def main(db_available=None, db_error=None):
                 scanner.log_callback = tool_log_to_box
                 scanner.finding_callback = on_finding
                 scanner.progress_callback = lambda v: root.after(0, lambda: progress_var.set(v))
-                
+                # Reset the command audit trail and stream new commands into the
+                # Command Preview tab live as they run.
+                scanner.clear_command_log()
+                scanner.command_callback = on_command_recorded
+                refresh_preview()
+
                 def wrapper():
                     # UI show stop button
                     root.after(0, lambda: stop_btn.pack(side="left", padx=5))
                     root.after(0, lambda: run_btn.config(state="disabled"))
-                    
+
                     scanner.reset_stop_event()
                     if tool_func:
                         if "Win Audit" in tool_name:
@@ -1991,20 +2043,69 @@ def main(db_available=None, db_error=None):
             status_label = tk.Label(stats_frame, text="STATUS: IDLE", bg="#121212", fg="#00ff00", font=("Segoe UI", 9, "bold"))
             status_label.pack(pady=(5, 0))
             
-            # Mini Log
-            log_container = tk.Frame(results_frame, bg="#1e1e1e", bd=1, highlightbackground="#333333", highlightthickness=1)
-            log_container.pack(fill="both", expand=True, pady=10)
+            # Mini Log + Command Preview (tabbed, for parity with the tool screens)
+            ddos_nb = ttk.Notebook(results_frame, style="TNotebook")
+            ddos_nb.pack(fill="both", expand=True, pady=10)
+
+            log_container = tk.Frame(ddos_nb, bg="#1e1e1e")
+            ddos_nb.add(log_container, text="  LIVE LOG  ")
 
             tool_log_box = tk.Text(log_container, bg="#000000", fg="#aaaaaa", font=("Consolas", 8), bd=0, height=12, width=85, padx=10, pady=5, highlightthickness=0, wrap="none")
             tool_log_box.pack(side="left", fill="both", expand=True)
-            
+
             lb_vscroll = ttk.Scrollbar(log_container, orient="vertical", style="Vertical.TScrollbar", command=tool_log_box.yview)
             lb_vscroll.pack(side="right", fill="y")
-            
+
             tool_log_box.config(yscrollcommand=lb_vscroll.set)
             tool_log_box.config(state="normal")
             tool_log_box.insert("1.0", "[*] DDoS Module Ready.\n[*] Caution: For authorized testing only.\n")
             tool_log_box.config(state="disabled")
+
+            # Command Preview tab
+            cmd_tab = tk.Frame(ddos_nb, bg="#1e1e1e")
+            ddos_nb.add(cmd_tab, text="  COMMAND PREVIEW  ")
+            cmd_box = tk.Text(cmd_tab, bg="#000000", fg="#00ff00", font=("Consolas", 9), bd=0, height=12, padx=10, pady=5, highlightthickness=0, wrap="word")
+            cmd_box.tag_configure("hdr", foreground="#00ff00", font=("Consolas", 9, "bold"))
+            cmd_box.tag_configure("plan", foreground="#f1c40f")
+            cmb_vscroll = ttk.Scrollbar(cmd_tab, orient="vertical", style="Vertical.TScrollbar", command=cmd_box.yview)
+            cmb_vscroll.pack(side="right", fill="y")
+            cmd_box.pack(side="left", fill="both", expand=True)
+            cmd_box.config(yscrollcommand=cmb_vscroll.set)
+
+            def refresh_ddos_preview():
+                try:
+                    tgt = tool_target_entry.get() or "<target>"
+                    try: thrd = int(threads_entry.get())
+                    except Exception: thrd = 50
+                    try: dur = int(duration_entry.get())
+                    except Exception: dur = 10
+                    planned = scanner.preview_command("DDoS Tool", tgt,
+                                                      attack_type=attack_type_var.get(), threads=thrd, duration=dur)
+                    cmd_box.config(state="normal")
+                    cmd_box.delete("1.0", tk.END)
+                    cmd_box.insert(tk.END, "Command that runs when you press Initialize Attack:\n\n", "hdr")
+                    cmd_box.insert(tk.END, f"  $ {planned}\n\n", "plan")
+                    if scanner.command_log:
+                        cmd_box.insert(tk.END, "Commands executed (this session):\n", "hdr")
+                        for e in scanner.command_log:
+                            cmd_box.insert(tk.END, f"  [{e['time']}]  {e['command']}\n")
+                    cmd_box.config(state="disabled")
+                except Exception:
+                    pass
+
+            def on_ddos_command(entry):
+                def _add():
+                    try:
+                        cmd_box.config(state="normal")
+                        cmd_box.insert(tk.END, f"  [{entry['time']}]  {entry['command']}\n")
+                        cmd_box.see(tk.END)
+                        cmd_box.config(state="disabled")
+                    except Exception:
+                        pass
+                root.after(0, _add)
+
+            ddos_nb.bind("<<NotebookTabChanged>>", lambda e: refresh_ddos_preview())
+            refresh_ddos_preview()
 
             def tool_log_to_box(message, is_error=False):
                 def append():
@@ -2065,7 +2166,10 @@ def main(db_available=None, db_error=None):
                 scanner.log_callback = tool_log_to_box
                 scanner.finding_callback = on_finding
                 scanner.progress_callback = lambda v: root.after(0, lambda: progress_var.set(v))
-                
+                scanner.clear_command_log()
+                scanner.command_callback = on_ddos_command
+                refresh_ddos_preview()
+
                 def wrapper():
                     root.after(0, lambda: stop_btn.pack(side="left", padx=5))
                     root.after(0, lambda: run_btn.config(state="disabled", text="ATTACK IN PROGRESS..."))
