@@ -40,7 +40,8 @@ DATA_FILES = [
 HIDDEN_IMPORTS = [
     "PIL",
     "PIL._imaging",
-    "mysql.connector",
+    "pymysql",
+    "pymysql.cursors",
     "dotenv",
     "nacl",
     "nacl.secret",

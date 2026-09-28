@@ -38,7 +38,18 @@ except Exception as e:
     sys.exit(1)
 
 try:
-    print("\n4. Testing gui_app imports...")
+    print("\n4. Testing pymysql and database imports...")
+    import pymysql
+    print("   ✓ pymysql imported successfully")
+    from db_connection import DatabaseConnection
+    print("   ✓ db_connection imported successfully")
+except Exception as e:
+    print(f"   ✗ FAILED: {e}")
+    traceback.print_exc()
+    sys.exit(1)
+
+try:
+    print("\n5. Testing gui_app imports...")
     # Don't import the whole module, just check syntax
     import py_compile
     py_compile.compile('gui_app.pyw', doraise=True)

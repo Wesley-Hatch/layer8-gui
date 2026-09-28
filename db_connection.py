@@ -9,31 +9,14 @@ with secure Argon2id hashing and AES-256-GCM encryption.
 import pymysql
 import pymysql.cursors
 import sqlite3
-import logging
 import os
 import sys
 from typing import Optional, Tuple, Dict, Any
+from secure_config import SecureConfig
+from secure_logger import get_logger
 
-# Import unified configuration
-try:
-    from config import Config
-
-    config = Config()
-    CONFIG_AVAILABLE = True
-except ImportError:
-    logging.warning("config.py not found - using fallback environment variables")
-    CONFIG_AVAILABLE = False
-    import os
-    from dotenv import load_dotenv
-
-    load_dotenv()
-
-# Set up logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    filename='database_connection.log'
-)
+# Set up secure logging
+logger = get_logger('database')
 
 
 class DatabaseConnection:
@@ -46,70 +29,90 @@ class DatabaseConnection:
     """
 
     def __init__(self):
-        """Initialize database connection with unified configuration"""
-
-        if CONFIG_AVAILABLE:
-            # Use unified configuration (preferred)
-            self.dialect = getattr(config, 'db_dialect', 'mysql')
-            self.db_path = getattr(config, 'db_path', 'db.sqlite3')
-            self.host = config.db_host
-            self.user = config.db_user
-            self.password = config.db_pass
-            self.database = config.db_name
-            self.port = config.db_port
-
-            # Security parameters
-            self.pepper = config.pepper
-            self.pwd_key = config.pwd_key_bytes
-            self.pwd_key_id = config.pwd_key_id
-
-            # Argon2id parameters
-            self.argon_memory_cost = config.argon_memory_cost
-            self.argon_time_cost = config.argon_time_cost
-            self.argon_threads = config.argon_threads
-
-            logging.info(f"Using unified configuration (Dialect: {self.dialect})")
-        else:
-            # Fallback to environment variables (legacy support)
-            import os
-            import base64
-
-            self.dialect = os.getenv('L8_DB_DIALECT', 'mysql')
-            self.db_path = os.getenv('L8_DB_PATH', 'db.sqlite3')
-            self.host = os.getenv('L8_DB_HOST', '82.197.82.156')
-            self.user = os.getenv('MYSQL_USER', 'u844677182_Layer8Database')
-            self.password = os.getenv('MYSQL_PASSWORD', 'Layer8WJA')
-            self.database = os.getenv('L8_DB_NAME', 'u844677182_app')
-            self.port = int(os.getenv('L8_DB_PORT', '3306'))
-
-            # Security parameters (fallback)
-            self.pepper = os.getenv('L8_PEPPER', 'DEV-PEPPER-CHANGE-ME')
-            pwd_key_b64 = os.getenv('L8_PWD_KEY_B64', '')
-            if pwd_key_b64:
-                self.pwd_key = base64.b64decode(pwd_key_b64)[:32]
-            else:
-                import hashlib
-                self.pwd_key = hashlib.sha256(b'DEV-PWD-KEY-CHANGE-ME').digest()
-            self.pwd_key_id = os.getenv('L8_PWD_KEY_ID', 'k1')
-
-            # Argon2id parameters (fallback)
-            self.argon_memory_cost = int(os.getenv('L8_ARGON_MEMORY_COST', '131072'))
-            self.argon_time_cost = int(os.getenv('L8_ARGON_TIME_COST', '3'))
-            self.argon_threads = int(os.getenv('L8_ARGON_THREADS', '2'))
-
-            logging.warning("Using fallback environment variables - install config.py for better integration")
+        """
+        Secure database connection with NO hardcoded credentials
+        """
+        self.config = SecureConfig()
+        
+        # Check if configured
+        if not self.config.is_configured():
+            logger.info("Application not configured. Launching Setup Wizard...")
+            # Launch setup wizard
+            try:
+                from setup_wizard import SetupWizard
+                wizard = SetupWizard()
+                wizard.run()
+            except Exception as e:
+                logger.error(f"Failed to launch setup wizard: {e}")
+                sys.exit(1)
+            
+            # Verify configuration was completed
+            if not self.config.is_configured():
+                logger.error("Layer8 is not configured. Please run setup wizard.")
+                sys.exit(1)
+        
+        # Load credentials
+        try:
+            # Note: For desktop app, we primarily rely on system keyring.
+            # If keyring is unavailable, it will look for config.enc.
+            # In a more advanced version, we'd prompt for master password here.
+            credentials = self.config.load_credentials()
+        except Exception as e:
+            logger.error(f"Failed to load credentials: {e}")
+            raise ValueError(f"Failed to load credentials: {e}")
+        
+        # Set attributes from secure storage
+        self.dialect = 'mysql'
+        self.host = credentials.get('db_host')
+        self.port = int(credentials.get('db_port', 3306))
+        self.database = credentials.get('db_name')
+        self.user = credentials.get('db_user')
+        self.password = credentials.get('db_password')
+        self.pepper = credentials.get('pepper')
+        self.pwd_key = credentials.get('pwd_key')
+        
+        # Security parameters (with safe defaults if not specified)
+        self.pwd_key_id = credentials.get('pwd_key_id', 'k1')
+        self.argon_memory_cost = int(credentials.get('argon_memory_cost', 131072))
+        self.argon_time_cost = int(credentials.get('argon_time_cost', 3))
+        self.argon_threads = int(credentials.get('argon_threads', 2))
+        self.db_path = credentials.get('db_path', 'db.sqlite3')
 
         self.connection: Optional[Any] = None
         self.last_error: Optional[str] = None
         self.current_user: Optional[Dict[str, Any]] = None
         self.placeholder = "?" if self.dialect == 'sqlite' else "%s"
-
-        if self.dialect == 'sqlite':
-            logging.info(f"DatabaseConnection initialized for SQLite: {self.db_path}")
-        else:
-            logging.info(f"DatabaseConnection initialized for MySQL: {self.database}@{self.host}")
         
-        logging.debug(f"Pepper length: {len(self.pepper)} chars, Key length: {len(self.pwd_key)} bytes")
+        # CRITICAL: No fallbacks, no defaults
+        # If any credential is missing, fail immediately
+        self._validate_credentials()
+        
+        logger.info("DatabaseConnection initialized from secure storage", context={
+            'host': self.host,
+            'port': self.port,
+            'database': self.database,
+            'user': self.user
+        })
+        logger.debug("Security parameters verified", context={
+            'pepper_length': len(self.pepper),
+            'pwd_key_length': len(self.pwd_key)
+        })
+
+    def _validate_credentials(self):
+        """Ensure all required credentials are present and valid"""
+        required = ['host', 'port', 'database', 'user', 'password', 'pepper', 'pwd_key']
+        for field in required:
+            val = getattr(self, field, None)
+            if val is None or val == "":
+                raise ValueError(f"Missing required credential: {field}")
+        
+        # Validate pepper length
+        if len(self.pepper) < 32:
+            raise ValueError("Pepper must be at least 32 characters")
+        
+        # Validate encryption key length
+        if len(self.pwd_key) != 32:
+            raise ValueError(f"Encryption key must be exactly 32 bytes (got {len(self.pwd_key)})")
 
     def connect(self) -> Tuple[bool, Optional[str]]:
         """
@@ -120,16 +123,21 @@ class DatabaseConnection:
         """
         try:
             if self.dialect == 'sqlite':
-                logging.info(f"Connecting to SQLite database: {self.db_path}")
+                logger.info("Connecting to SQLite database", context={'path': self.db_path})
                 # Ensure directory exists
                 os.makedirs(os.path.dirname(os.path.abspath(self.db_path)), exist_ok=True)
                 self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
                 # Enable dictionary-like results
                 self.connection.row_factory = sqlite3.Row
-                logging.info("Successfully connected to SQLite")
+                logger.info("Successfully connected to SQLite")
                 return True, None
             else:
-                logging.info(f"Attempting to connect to MySQL at {self.host}:{self.port}")
+                logger.info("Attempting to connect to MySQL", context={
+                    'host': self.host,
+                    'port': self.port,
+                    'database': self.database,
+                    'user': self.user
+                })
 
                 # Use PyMySQL (pure Python, PyInstaller compatible)
                 self.connection = pymysql.connect(
@@ -145,20 +153,20 @@ class DatabaseConnection:
                 )
 
                 if self.connection.open:
-                    logging.info(f"Successfully connected to MySQL Server")
+                    logger.info("Successfully connected to MySQL Server")
                     return True, None
                 else:
                     self.last_error = "Connection object created but not connected"
-                    logging.error(self.last_error)
+                    logger.error(self.last_error)
                     return False, self.last_error
 
         except pymysql.Error as e:
             self.last_error = f"Database error {e.args[0]}: {e.args[1] if len(e.args) > 1 else str(e)}"
-            logging.error(self.last_error)
+            logger.error(self.last_error)
             return False, self.last_error
         except Exception as e:
             self.last_error = f"Database connection error: {str(e)}"
-            logging.error(self.last_error)
+            logger.error(self.last_error)
             return False, self.last_error
 
     def _parse_mysql_error(self, error: pymysql.Error) -> str:
@@ -237,17 +245,17 @@ class DatabaseConnection:
             )
 
             hash_result = ph.hash(peppered)
-            logging.debug(f"Generated Argon2id hash: {hash_result[:50]}...")
+            logger.debug("Generated Argon2id hash", context={'hash_preview': f"{hash_result[:50]}..."})
             return hash_result
 
         except ImportError:
-            logging.error("argon2-cffi not installed - password hashing unavailable")
-            logging.error("Install with: pip install argon2-cffi")
+            logger.error("argon2-cffi not installed - password hashing unavailable")
+            logger.error("Install with: pip install argon2-cffi")
             # Return peppered password as fallback (INSECURE - dev only)
             return peppered
 
         except Exception as e:
-            logging.error(f"Argon2 hashing error: {e}")
+            logger.error(f"Argon2 hashing error: {e}")
             return peppered
 
     def seal_hash(self, hash_plaintext: str) -> str:
@@ -268,7 +276,7 @@ class DatabaseConnection:
             str: Encrypted hash with key ID prefix
         """
         if not self.pwd_key or len(self.pwd_key) != 32:
-            logging.warning("Invalid encryption key - using plaintext storage (INSECURE)")
+            logger.warning("Invalid encryption key - using plaintext storage (INSECURE)")
             import base64
             return f"plain:{base64.b64encode(hash_plaintext.encode()).decode()}"
 
@@ -291,17 +299,20 @@ class DatabaseConnection:
             # Return with key ID prefix: "k1:base64data"
             sealed = f"{self.pwd_key_id}:{base64.b64encode(blob).decode()}"
 
-            logging.debug(f"Sealed hash with key {self.pwd_key_id}: {sealed[:50]}...")
+            logger.debug("Sealed hash", context={
+                'key_id': self.pwd_key_id,
+                'sealed_preview': f"{sealed[:50]}..."
+            })
             return sealed
 
         except ImportError:
-            logging.error("pycryptodome not installed - encryption unavailable")
-            logging.error("Install with: pip install pycryptodome")
+            logger.error("pycryptodome not installed - encryption unavailable")
+            logger.error("Install with: pip install pycryptodome")
             import base64
             return f"plain:{base64.b64encode(hash_plaintext.encode()).decode()}"
 
         except Exception as e:
-            logging.error(f"AES encryption error: {e}")
+            logger.error(f"AES encryption error: {e}")
             import base64
             return f"plain:{base64.b64encode(hash_plaintext.encode()).decode()}"
 
@@ -325,12 +336,12 @@ class DatabaseConnection:
 
             # Check for plaintext format (dev/fallback)
             if sealed_blob.startswith('plain:'):
-                logging.warning("Detected plaintext storage - decoding as base64")
+                logger.warning("Detected plaintext storage - decoding as base64")
                 return base64.b64decode(sealed_blob[6:]).decode('utf-8')
 
             # Parse format: "keyid:base64data"
             if ':' not in sealed_blob:
-                logging.error("Invalid sealed format - missing key ID")
+                logger.error("Invalid sealed format - missing key ID")
                 # Try as raw base64 (legacy format)
                 try:
                     raw = base64.b64decode(sealed_blob)
@@ -341,7 +352,7 @@ class DatabaseConnection:
                 key_id = parts[0]
 
                 if key_id != self.pwd_key_id:
-                    logging.warning(f"Key ID mismatch: stored={key_id}, current={self.pwd_key_id}")
+                    logger.warning("Key ID mismatch", context={'stored': key_id, 'current': self.pwd_key_id})
                     # Continue anyway - might be during key rotation
 
                 raw = base64.b64decode(parts[1])
@@ -350,7 +361,7 @@ class DatabaseConnection:
             from Crypto.Cipher import AES
 
             if len(raw) < 28:  # Min: 12 (nonce) + 16 (tag) + 0 (ciphertext)
-                logging.error(f"Encrypted blob too short: {len(raw)} bytes")
+                logger.error("Encrypted blob too short", context={'length': len(raw)})
                 return None
 
             # Extract: nonce (12 bytes) + tag (16 bytes) + ciphertext
@@ -363,16 +374,16 @@ class DatabaseConnection:
             plaintext = cipher.decrypt_and_verify(ciphertext, tag)
 
             result = plaintext.decode('utf-8')
-            logging.debug(f"Successfully unsealed hash: {result[:50]}...")
+            logger.debug("Successfully unsealed hash", context={'result_preview': f"{result[:50]}..."})
             return result
 
         except ImportError:
-            logging.error("pycryptodome not installed")
+            logger.error("pycryptodome not installed")
             return None
 
         except Exception as e:
-            logging.error(f"Unseal error: {e}")
-            logging.debug(f"Failed blob: {sealed_blob[:100]}...")
+            logger.error(f"Unseal error: {e}")
+            logger.debug("Failed blob info", context={'sealed_preview': f"{sealed_blob[:100]}..."})
             return None
 
     def verify_password(self, password: str, sealed_hash: str) -> bool:
@@ -395,13 +406,13 @@ class DatabaseConnection:
             from argon2 import PasswordHasher
             from argon2.exceptions import VerifyMismatchError, InvalidHashError
         except ImportError:
-            logging.error("argon2-cffi not installed")
+            logger.error("argon2-cffi not installed")
             return False
 
         # 1. Unseal (decrypt) the hash
         plaintext_hash = self.unseal_hash(sealed_hash)
         if not plaintext_hash:
-            logging.warning("Failed to unseal hash")
+            logger.warning("Failed to unseal hash")
             return False
 
         # 2. Verify with Argon2 - Try multiple pepper styles for compatibility
@@ -412,7 +423,7 @@ class DatabaseConnection:
                 # Style 1: Colon delimiter (Current PHP reset style)
                 try:
                     ph.verify(plaintext_hash, self.pepper_password(password, style='colon'))
-                    logging.info("Password verification successful (colon style)")
+                    logger.info("Password verification successful (colon style)")
                     return True
                 except VerifyMismatchError:
                     pass
@@ -420,30 +431,29 @@ class DatabaseConnection:
                 # Style 2: Direct concatenation (Legacy style)
                 try:
                     ph.verify(plaintext_hash, self.pepper_password(password, style='direct'))
-                    logging.info("Password verification successful (direct style)")
+                    logger.info("Password verification successful (direct style)")
                     return True
                 except VerifyMismatchError:
                     pass
 
-                logging.debug("Password verification failed for all pepper styles")
+                logger.debug("Password verification failed for all pepper styles")
                 return False
             else:
                 # Not an Argon2 hash - might be legacy/plaintext
-                logging.warning(f"Hash doesn't start with $argon2: {plaintext_hash[:20]}...")
+                logger.warning("Hash format mismatch", context={'hash_start': plaintext_hash[:20]})
                 # Try both styles for legacy comparison
                 return (self.pepper_password(password, style='colon') == plaintext_hash or
                         self.pepper_password(password, style='direct') == plaintext_hash)
 
         except VerifyMismatchError:
-            logging.debug("Password verification failed - incorrect password")
+            logger.debug("Password verification failed - incorrect password")
             return False
 
         except InvalidHashError as e:
-            logging.error(f"Invalid hash format: {e}")
+            logger.error(f"Invalid hash format: {e}")
             return False
-
         except Exception as e:
-            logging.error(f"Verification error: {e}")
+            logger.error(f"Verification error: {e}")
             return False
 
     # =========================================================================
@@ -480,14 +490,14 @@ class DatabaseConnection:
         Returns:
             Tuple[bool, Any]: (success, user_data_dict or error_message)
         """
-        logging.info(f"Login attempt for username: {username}")
+        logger.security('login_attempt', context={'username': username})
 
         # Ensure we have a connection
         if not self._is_active_connection():
-            logging.warning("No active connection, attempting to connect...")
+            logger.warning("No active connection, attempting to connect...")
             success, error = self.connect()
             if not success:
-                logging.error(f"Connection failed: {error}")
+                logger.error(f"Connection failed: {error}")
                 return False, error
 
         try:
@@ -504,7 +514,7 @@ class DatabaseConnection:
                 
                 if user:
                     if self.dialect == 'sqlite': user = dict(user)
-                    logging.debug(f"User found in 'users' table")
+                    logger.debug("User found in 'users' table", context={'username': username})
                     # Map PHP columns to standard internal format
                     if 'role' in user:
                         user['is_admin'] = user.get('role') in ['admin', 'superadmin', 'staff']
@@ -520,7 +530,7 @@ class DatabaseConnection:
                         else:
                             user['password'] = pwd_enc
             except Exception as e:
-                logging.debug(f"Table 'users' not available or error: {e}")
+                logger.debug(f"Table 'users' not available or error: {e}")
 
             # 2. Try 'user_logins' table if not found in 'users'
             if not user:
@@ -531,9 +541,9 @@ class DatabaseConnection:
                     
                     if user:
                         if self.dialect == 'sqlite': user = dict(user)
-                        logging.debug(f"User found in 'user_logins' table")
+                        logger.debug("User found in 'user_logins' table", context={'username': username})
                 except Exception as e:
-                    logging.debug(f"Table 'user_logins' not available or error: {e}")
+                    logger.debug(f"Table 'user_logins' not available or error: {e}")
 
             cursor.close()
 
@@ -542,14 +552,23 @@ class DatabaseConnection:
                 stored_hash = user.get('password') or user.get('password_hash') or user.get('password_hash_enc')
 
                 if self.verify_password(password, stored_hash):
-                    logging.info(f"Login successful for user: {username} (ID: {user.get('id', 'N/A')})")
+                    logger.security('login_success', context={
+                        'username': username,
+                        'user_id': user.get('id', 'N/A')
+                    })
                     self.current_user = user
                     return True, user
                 else:
-                    logging.warning(f"Login failed for user: {username} - Invalid password")
+                    logger.security('login_failed', context={
+                        'username': username,
+                        'reason': 'invalid_password'
+                    })
                     return False, "Invalid username or password"
             else:
-                logging.warning(f"Login failed for user: {username} - User not found")
+                logger.security('login_failed', context={
+                    'username': username,
+                    'reason': 'user_not_found'
+                })
                 return False, "Invalid username or password"
 
         except Exception as e:
@@ -557,7 +576,7 @@ class DatabaseConnection:
                 error_msg = self._parse_mysql_error(e)
             else:
                 error_msg = f"Unexpected error during login: {str(e)}"
-            logging.error(error_msg)
+            logger.error(error_msg)
             return False, error_msg
 
     def create_user(self, username: str, password: str, email: str = "", is_admin: bool = False) -> Tuple[bool, str]:
@@ -618,7 +637,7 @@ class DatabaseConnection:
             self.connection.commit()
             cursor.close()
 
-            logging.info(f"User created successfully: {username}")
+            logger.info("User created successfully", context={'username': username})
             return True, "User created successfully"
 
         except Exception as e:
@@ -630,7 +649,7 @@ class DatabaseConnection:
             else:
                 error_msg = f"User creation error: {str(e)}"
 
-            logging.error(error_msg)
+            logger.error(error_msg)
             return False, error_msg
 
     def ensure_table_exists(self) -> Tuple[bool, str]:
@@ -656,7 +675,7 @@ class DatabaseConnection:
                 cursor.execute("SHOW TABLES LIKE 'users';")
             
             if cursor.fetchone():
-                logging.info("Table 'users' already exists")
+                logger.info("Table 'users' already exists")
                 cursor.close()
                 return True, "Table 'users' exists"
 
@@ -669,7 +688,7 @@ class DatabaseConnection:
             result = cursor.fetchone()
 
             if not result:
-                logging.info("Creating user_logins table...")
+                logger.info("Creating user_logins table...")
 
                 if self.dialect == 'sqlite':
                     create_table_sql = """
@@ -698,13 +717,13 @@ class DatabaseConnection:
                                        """
 
                 cursor.execute(create_table_sql)
-                logging.info("Table created successfully")
+                logger.info("Table created successfully")
 
                 # Create default admin user
                 self.create_user('Layer8Wes', 'Valorant123!', 'wesley@layer8.io', True)
                 self.create_user('admin', 'admin123', 'admin@layer8.io', True)
 
-                logging.info("Default users created")
+                logger.info("Default users created")
                 cursor.close()
                 return True, "Table created with default users"
             else:
@@ -716,7 +735,7 @@ class DatabaseConnection:
                 error_msg = self._parse_mysql_error(e)
             else:
                 error_msg = f"Table creation error: {str(e)}"
-            logging.error(error_msg)
+            logger.error(error_msg)
             return False, error_msg
 
     def test_connection(self) -> Tuple[bool, str]:
@@ -750,7 +769,7 @@ class DatabaseConnection:
         """Close database connection"""
         if self._is_active_connection():
             self.connection.close()
-            logging.info("Database connection closed")
+            logger.info("Database connection closed")
 
     def __enter__(self):
         """Context manager entry"""

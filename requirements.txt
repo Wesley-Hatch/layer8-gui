@@ -7,6 +7,10 @@ Pillow>=10.0.0
 pymysql>=1.1.0
 python-dotenv>=1.0.0
 
+# Secure Storage
+cryptography==41.0.7
+keyring==24.3.0
+
 # Cryptography
 PyNaCl>=1.5.0
 argon2-cffi>=21.3.0

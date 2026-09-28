@@ -8,15 +8,10 @@ import time
 import base64
 from PIL import Image, ImageTk
 from updater_gui import add_updater_to_gui
+from secure_logger import get_logger
 
-# Set up basic logging FIRST
-import logging
-log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gui_startup.log')
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    filename=log_file
-)
+# Set up secure logging
+logger = get_logger('application')
 
 class DebugLauncher:
     def __init__(self):
@@ -323,26 +318,42 @@ class DebugLauncher:
             self.update_status("Testing network...", "Step 3/4", self.theme.COLORS['info'])
             self.log("\n[STEP 3] Testing network connectivity...", "INFO")
             
-            db_host = os.getenv('L8_DB_HOST', '82.197.82.156')
+            db_host = os.getenv('L8_DB_HOST')
             db_port = int(os.getenv('L8_DB_PORT', '3306'))
             
-            self.log(f"Attempting to reach {self._mask(db_host)}:{db_port}...", "INFO")
-            
-            import socket
-            network_ok = False
-            try:
-                sock = socket.create_connection((db_host, db_port), timeout=5)
-                sock.close()
-                self.log(f"✓ Network connection to {self._mask(db_host)}:{db_port} successful!", "SUCCESS")
-                network_ok = True
-            except socket.timeout:
-                self.log(f"✗ TIMEOUT: Server at {self._mask(db_host)}:{db_port} not responding", "ERROR")
-                self.log("  Possible causes:", "WARN")
-                self.log("    - Remote MySQL not enabled in Hostinger", "WARN")
-                self.log("    - Your IP not whitelisted", "WARN")
-                self.log("    - Firewall blocking port 3306", "WARN")
-            except Exception as e:
-                self.log(f"✗ Network error: {e}", "ERROR")
+            # If not in env, try to get from secure config
+            if not db_host:
+                try:
+                    from secure_config import SecureConfig
+                    sc = SecureConfig()
+                    if sc.is_configured():
+                        # Try loading from keyring (no master password needed for P1)
+                        creds = sc.load_credentials()
+                        db_host = creds.get('db_host')
+                        db_port = int(creds.get('db_port', 3306))
+                except:
+                    pass
+
+            if not db_host:
+                self.log("✗ Database host not configured. Skipping network probe.", "WARN")
+                network_ok = True # Proceed to Step 4 where Wizard handles setup
+            else:
+                self.log(f"Attempting to reach {self._mask(db_host)}:{db_port}...", "INFO")
+                
+                import socket
+                try:
+                    sock = socket.create_connection((db_host, db_port), timeout=5)
+                    sock.close()
+                    self.log(f"✓ Network connection to {self._mask(db_host)}:{db_port} successful!", "SUCCESS")
+                    network_ok = True
+                except socket.timeout:
+                    self.log(f"✗ TIMEOUT: Server at {self._mask(db_host)}:{db_port} not responding", "ERROR")
+                    self.log("  Possible causes:", "WARN")
+                    self.log("    - Remote MySQL not enabled in Hostinger", "WARN")
+                    self.log("    - Your IP not whitelisted", "WARN")
+                    self.log("    - Firewall blocking port 3306", "WARN")
+                except Exception as e:
+                    self.log(f"✗ Network error: {e}", "ERROR")
             
             if not network_ok:
                 self.finish_diagnostics(False, "Network unreachable - launching in offline mode")
@@ -625,7 +636,7 @@ class LoginWindow:
         # Handle window close
         self.window.protocol("WM_DELETE_WINDOW", self.on_close)
         
-        logging.info("Login window displayed")
+        logger.info("Login window displayed")
     
     def update_status(self, message, color=None):
         """Update status label safely"""
@@ -648,7 +659,7 @@ class LoginWindow:
         # Validation
         if not username or not password:
             self.update_status("Please enter both username and password")
-            logging.warning("Login attempt with empty credentials")
+            logger.warning("Login attempt with empty credentials")
             return
         
         # Check max attempts
@@ -658,7 +669,7 @@ class LoginWindow:
                 "Too Many Attempts",
                 "Too many failed login attempts. Application will close."
             )
-            logging.error(f"Max login attempts exceeded ({self.max_attempts})")
+            logger.error(f"Max login attempts exceeded ({self.max_attempts})")
             self.parent.quit()
             return
         
@@ -677,7 +688,7 @@ class LoginWindow:
     def _perform_login(self, username, password):
         """Perform actual login in background thread"""
         try:
-            logging.info(f"Login attempt {self.login_attempts} for user: {username}")
+            logger.info(f"Login attempt {self.login_attempts} for user: {username}")
             
             # Create database connection
             from db_connection import DatabaseConnection
@@ -687,19 +698,19 @@ class LoginWindow:
             success, error = self.db.connect()
             
             if not success:
-                logging.error(f"Database connection failed: {error}")
+                logger.error(f"Database connection failed: {error}")
                 self.window.after(0, lambda: self._login_failed(
                     f"Database connection failed:\n\n{error}"
                 ))
                 return
             
-            logging.info("Database connected, verifying credentials...")
+            logger.info("Database connected, verifying credentials...")
             
             # Verify credentials
             success, result = self.db.verify_login(username, password)
             
             if success:
-                logging.info(f"Login successful for {username}")
+                logger.info(f"Login successful for {username}")
                 user_data = result
                 
                 # Close connection
@@ -708,7 +719,7 @@ class LoginWindow:
                 # Call success callback on main thread
                 self.window.after(0, lambda: self._login_success(user_data))
             else:
-                logging.warning(f"Login failed for {username}: {result}")
+                logger.warning(f"Login failed for {username}: {result}")
                 self.db.close()
                 
                 # Show error on main thread
@@ -716,7 +727,7 @@ class LoginWindow:
         
         except Exception as e:
             error_msg = f"Unexpected error during login: {str(e)}"
-            logging.error(error_msg, exc_info=True)
+            logger.error(error_msg, exc_info=True)
             
             # Show error on main thread
             self.window.after(0, lambda: self._login_failed(error_msg))
@@ -727,7 +738,7 @@ class LoginWindow:
             is_admin = user_data.get('is_admin', False)
             username = user_data.get('username', 'Unknown')
             
-            logging.info(f"Login success handler called for {username}")
+            logger.info(f"Login success handler called for {username}")
             
             # Close login window
             if self.window:
@@ -738,7 +749,7 @@ class LoginWindow:
                 self.on_success_callback(is_admin, username)
             
         except Exception as e:
-            logging.error(f"Error in login success handler: {e}", exc_info=True)
+            logger.error(f"Error in login success handler: {e}", exc_info=True)
             messagebox.showerror("Error", f"Login succeeded but app failed to load: {e}")
     
     def _login_failed(self, error_message):
@@ -761,7 +772,7 @@ class LoginWindow:
             self.password_entry.focus()
             
         except Exception as e:
-            logging.error(f"Error in login failure handler: {e}", exc_info=True)
+            logger.error(f"Error in login failure handler: {e}", exc_info=True)
     
     def test_database(self):
         """Test database connection"""
@@ -807,7 +818,7 @@ class LoginWindow:
             "Are you sure you want to exit?"
         )
         if result:
-            logging.info("User cancelled login")
+            logger.info("User cancelled login")
             self.parent.quit()
 
 def get_resource_path(relative_path):
@@ -849,18 +860,15 @@ def main(db_available=None, db_error=None):
         if not getattr(launcher, 'app_launched', False):
             return
         
-    # Re-setup logging for the main app
-    log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gui_app.log')
-    logging.basicConfig(filename=log_file, level=logging.INFO, 
-                        format='%(asctime)s - %(levelname)s - %(message)s', force=True)
-    logging.info(f"Main application starting (DB available: {db_available})")
+    # Structured logging already setup via secure_logger.py
+    logger.info("Main application starting", context={'db_available': db_available})
 
     # Database path (SQLite fallback check)
     db_path = get_db_path()
-    logging.info(f"Local database path: {db_path}")
+    logger.info("Local database setup", context={'db_path': db_path})
 
     root = tk.Tk()
-    logging.info("Tkinter root created.")
+    logger.info("Tkinter root created.")
     root.title("Layer8 GUI Application")
     root.geometry("650x750")
     root.resizable(False, False)
@@ -907,19 +915,19 @@ def main(db_available=None, db_error=None):
 
                 root.after(0, show_notification)
         except Exception as e:
-            logging.error(f"Background update check failed: {e}")
+            logger.error(f"Background update check failed: {e}")
 
     # Start background checker
     threading.Thread(target=check_updates_background, daemon=True).start()
-    logging.info(f"Auto-update enabled (current version: {current_version})")
+    logger.info(f"Auto-update enabled (current version: {current_version})")
     
     # Delay overrideredirect to ensure window is properly initialized
     def apply_overrideredirect():
         try:
             root.overrideredirect(True)
-            logging.info("Overrideredirect(True) applied.")
+            logger.info("Overrideredirect(True) applied.")
         except Exception as e:
-            logging.error(f"Error applying overrideredirect: {e}")
+            logger.error(f"Error applying overrideredirect: {e}")
     
     # root.after(100, apply_overrideredirect) # Relocated to on_login_success
 
@@ -1380,7 +1388,7 @@ def main(db_available=None, db_error=None):
                     # Insert at index 0 to show latest at top
                     activity_tree.insert("", 0, iid=str(idx), values=(item.get("time", "N/A"), item["cmd"], item["status"], "Double-click to View/Download"))
                 
-                # Expand window if needed
+                # Keep the wide dashboard sized correctly after populating reports
                 if len(scanner.history) > 0:
                     update_window_size(width=1180, centered_items=[])
             root.after(0, update)
@@ -2996,7 +3004,7 @@ def main(db_available=None, db_error=None):
         render_menu()
 
     def on_login_success(is_admin, username):
-        logging.info(f"Login success for {username}. Showing main menu.")
+        logger.info(f"Login success for {username}. Showing main menu.")
         apply_overrideredirect()
         root.deiconify()
         show_main_menu(username, is_admin, db_available=db_available)
@@ -3011,9 +3019,9 @@ def main(db_available=None, db_error=None):
     login.show_login()
 
     # Start the event loop
-    logging.info("Starting mainloop...")
+    logger.info("Starting mainloop...")
     root.mainloop()
-    logging.info("Mainloop exited.")
+    logger.info("Mainloop exited.")
 
 if __name__ == "__main__":
     main()

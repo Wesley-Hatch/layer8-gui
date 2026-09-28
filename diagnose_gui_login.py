@@ -21,11 +21,9 @@ def diagnose_login_issue():
     print("STEP 1: Configuration Check")
     print("-" * 80)
     
-    print(f"Pepper: {db.pepper[:30]}...")
     print(f"Pepper Length: {len(db.pepper)} chars")
-    print(f"Expected: zVtR89WKPvDDtsHzt5sEqMiMcel9/qzbTVZwoD8JgXM=")
-    pepper_match = db.pepper == "zVtR89WKPvDDtsHzt5sEqMiMcel9/qzbTVZwoD8JgXM="
-    print(f"Pepper Match: {'✅ YES' if pepper_match else '❌ NO'}")
+    pepper_match = len(db.pepper) >= 32
+    print(f"Pepper Valid (length >= 32): {'✅ YES' if pepper_match else '❌ NO'}")
     print()
     
     print(f"Encryption Key Length: {len(db.pwd_key)} bytes")
@@ -38,10 +36,8 @@ def diagnose_login_issue():
     print()
     
     if not pepper_match:
-        print("❌ CRITICAL: Pepper doesn't match!")
-        print("   Your Python .env has wrong pepper value")
-        print("   Expected: zVtR89WKPvDDtsHzt5sEqMiMcel9/qzbTVZwoD8JgXM=")
-        print(f"   Got:      {db.pepper}")
+        print("❌ CRITICAL: Pepper is too short!")
+        print("   Pepper must be at least 32 characters long.")
         return
     
     if not key_ok:
@@ -65,7 +61,8 @@ def diagnose_login_issue():
     print("-" * 80)
     
     try:
-        cursor = db.connection.cursor(dictionary=True)
+        import pymysql.cursors
+        cursor = db.connection.cursor(pymysql.cursors.DictCursor)
         # Check both tables
         all_users = []
         try:
@@ -103,7 +100,8 @@ def diagnose_login_issue():
     print("-" * 80)
     
     try:
-        cursor = db.connection.cursor(dictionary=True)
+        import pymysql.cursors
+        cursor = db.connection.cursor(pymysql.cursors.DictCursor)
         cursor.execute("SELECT username, password FROM user_logins LIMIT 1")
         test_user = cursor.fetchone()
         cursor.close()
@@ -200,7 +198,8 @@ def diagnose_login_issue():
     # No, it doesn't. Let's just do a manual check like in verify_login
     
     user = None
-    cursor = db.connection.cursor(dictionary=True)
+    import pymysql.cursors
+    cursor = db.connection.cursor(pymysql.cursors.DictCursor)
     try:
         cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
         user = cursor.fetchone()

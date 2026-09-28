@@ -1,17 +1,16 @@
-import mysql.connector
-from mysql.connector import Error
+import pymysql
 import os
 import socket
 
 def test_connection():
-    # Database connection details (Hostinger fallbacks from gui_app.pyw)
-    DB_HOST = os.getenv('L8_DB_HOST') or '82.197.82.156'
-    DB_USER = os.getenv('MYSQL_USER') or os.getenv('DB_USER') or 'u844677182_Layer8Database'
-    DB_PASSWORD = os.getenv('MYSQL_PASSWORD') or os.getenv('DB_PASS') or 'Layer8WJA'
-    DB_NAME = os.getenv('L8_DB_NAME') or 'u844677182_app'
-    DB_PORT = os.getenv('L8_DB_PORT') or '3306'
+    # Database connection details
+    DB_HOST = os.getenv('L8_DB_HOST')
+    DB_USER = os.getenv('MYSQL_USER') or os.getenv('DB_USER')
+    DB_PASSWORD = os.getenv('MYSQL_PASSWORD') or os.getenv('DB_PASS')
+    DB_NAME = os.getenv('L8_DB_NAME')
+    DB_PORT = os.getenv('L8_DB_PORT', '3306')
 
-    print("--- MySQL Connection Diagnostic ---")
+    print("--- MySQL Connection Diagnostic (using PyMySQL) ---")
     print(f"Target Host: {DB_HOST}")
     print(f"Target Port: {DB_PORT}")
     print(f"Database: {DB_NAME}")
@@ -36,18 +35,18 @@ def test_connection():
     print("\nAttempting MySQL handshake...")
     try:
         print("Initializing connection object...")
-        conn = mysql.connector.connect(
+        conn = pymysql.connect(
             host=DB_HOST,
-            port=DB_PORT,
+            port=int(DB_PORT),
             user=DB_USER,
-            passwd=DB_PASSWORD,
+            password=DB_PASSWORD,
             database=DB_NAME,
             connect_timeout=5,
-            use_pure=True
+            autocommit=True
         )
         print("Connection object created. Checking if connected...")
 
-        if conn.is_connected():
+        if conn.open:
             print("✅ MySQL Connection: SUCCESS!")
             db_info = conn.get_server_info()
             print(f"   Server version: {db_info}")
@@ -67,19 +66,20 @@ def test_connection():
             cursor.close()
             conn.close()
         else:
-            print("❌ MySQL Connection: FAILED (is_connected() returned False)")
-    except Error as e:
+            print("❌ MySQL Connection: FAILED (open returned False)")
+    except pymysql.Error as e:
         print(f"❌ MySQL Connection: FAILED")
-        print(f"   Error Code: {e.errno}")
-        print(f"   SQL State: {e.sqlstate}")
-        print(f"   Message: {e.msg}")
+        errno = e.args[0] if e.args else 0
+        msg = e.args[1] if len(e.args) > 1 else str(e)
+        print(f"   Error Code: {errno}")
+        print(f"   Message: {msg}")
         
-        if e.errno == 2003:
+        if errno == 2003:
             print("\n   Troubleshooting Hint (Can't connect):")
             print("   1. Ensure Remote MySQL is enabled in Hostinger hPanel.")
             print("   2. Whitelist your IP address in Hostinger 'Remote MySQL' settings.")
             print("   3. Check if your ISP or local firewall blocks port 3306.")
-        elif e.errno == 1045:
+        elif errno == 1045:
             print("\n   Troubleshooting Hint (Access denied):")
             print("   1. Double-check your database username and password.")
             print("   2. Ensure the user has permissions for the database.")

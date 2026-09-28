@@ -3,7 +3,10 @@ from tkinter import messagebox
 import sys
 import os
 import importlib.util
-import logging
+from secure_logger import get_logger
+
+# Set up secure logging
+logger = get_logger('application')
 
 def launch():
     """
@@ -30,9 +33,7 @@ def launch():
             messagebox.showerror("Error", "gui_app.pyw has no main() function")
             
     except Exception as e:
-        import traceback
-        error_msg = traceback.format_exc()
-        logging.error(f"Failed to launch: {error_msg}")
+        logger.error(f"Failed to launch: {e}", exc_info=True)
         messagebox.showerror("Launch Failed", f"An error occurred while launching the application:\n\n{str(e)}")
 
 if __name__ == "__main__":

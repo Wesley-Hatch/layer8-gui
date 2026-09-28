@@ -99,6 +99,9 @@ jobs:
           --hidden-import=Crypto.Cipher `
           --hidden-import=Crypto.Cipher.AES `
           --hidden-import=Crypto.Random `
+          --hidden-import=keyring `
+          --collect-submodules=keyring `
+          --collect-submodules=cryptography `
           --hidden-import=dotenv `
           --hidden-import=scapy `
           --hidden-import=scapy.all `
@@ -236,6 +239,9 @@ jobs:
           --hidden-import=Crypto.Cipher \
           --hidden-import=Crypto.Cipher.AES \
           --hidden-import=Crypto.Random \
+          --hidden-import=keyring \
+          --collect-submodules=keyring \
+          --collect-submodules=cryptography \
           --hidden-import=dotenv \
           --hidden-import=scapy \
           --hidden-import=scapy.all \
@@ -370,6 +376,9 @@ jobs:
           --hidden-import=Crypto.Cipher \
           --hidden-import=Crypto.Cipher.AES \
           --hidden-import=Crypto.Random \
+          --hidden-import=keyring \
+          --collect-submodules=keyring \
+          --collect-submodules=cryptography \
           --hidden-import=dotenv \
           --hidden-import=scapy \
           --hidden-import=scapy.all \

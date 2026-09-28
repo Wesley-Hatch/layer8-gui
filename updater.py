@@ -20,19 +20,16 @@ import hashlib
 import shutil
 import zipfile
 import tempfile
-import logging
+import requests
+import time
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
 from datetime import datetime, timedelta
 import threading
+from secure_logger import get_logger
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename='updater.log'
-)
-logger = logging.getLogger('Layer8Updater')
+# Configure secure logging
+logger = get_logger('application')
 
 
 class Layer8Updater:
@@ -457,7 +454,6 @@ class Layer8Updater:
         """
         running_exe = Path(sys.executable).resolve() if getattr(sys, 'frozen', False) else None
 
-        # Get list of files to replace
         for item in source_dir.rglob('*'):
             if item.is_file():
                 # Calculate relative path
@@ -499,7 +495,7 @@ class Layer8Updater:
                     logger.debug(f"Could not remove stale file {stale.name}: {e}")
         except Exception as e:
             logger.debug(f"Stale-file cleanup skipped: {e}")
-
+    
     def _rollback(self, backup_path: Path) -> bool:
         """Rollback to backup"""
         try:

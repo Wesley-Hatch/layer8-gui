@@ -1,6 +1,10 @@
 import os
 import json
 import time
+from secure_logger import get_logger
+
+# Set up secure logging
+logger = get_logger('ai')
 
 try:
     import anthropic
@@ -42,12 +46,18 @@ class AIAnalyzer:
                 try:
                     with open(key_file, "r") as f:
                         os.environ["ANTHROPIC_API_KEY"] = f.read().strip()
-                except: pass
+                except Exception as e:
+                    logger.error(f"Failed to read key file: {e}")
 
         try:
             self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         except Exception:
             self.api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY")
+
+        if self.api_key:
+            logger.info("AI credentials loaded", context={'api_key': self.api_key})
+        else:
+            logger.warning("No AI API key found")
 
     def _init_client(self):
         if not anthropic or not self.api_key:
@@ -282,6 +292,7 @@ class AIAnalyzer:
         return package
 
     def _handle_api_error(self, e):
+        logger.error(f"AI API Error: {e}", exc_info=True)
         if "401" in str(e):
             return "[!] API Authentication Error: Invalid API Key."
         if "404" in str(e):

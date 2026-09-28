@@ -13,6 +13,14 @@ except ImportError:
     pd = None
 import hashlib
 from scapy.all import sniff, conf, send, wrpcap
+from input_validator import InputValidator
+from safe_executor import SafeExecutor
+from tool_checker import ToolChecker
+from tool_simulator import ToolSimulator
+from secure_logger import get_logger
+
+# Set up secure logging
+logger = get_logger('scanner')
 try:
     from scapy.layers.inet import IP, TCP, UDP
     from scapy.layers.dns import DNS, DNSQR
@@ -47,6 +55,7 @@ class ScannerTools:
         self.all_findings = []
         self.current_logs = []
         self.stop_event = threading.Event()
+        self.executor = SafeExecutor()
         # Audit trail: timestamped top-level command for each tool run,
         # plus an optional live callback the GUI's Command Preview tab uses.
         self.command_log = []
@@ -63,9 +72,32 @@ class ScannerTools:
         self.stop_event.clear()
 
     def log(self, message, is_error=False):
+        # Structured logging to file
+        if is_error:
+            logger.error(message)
+        else:
+            logger.info(message)
+        
+        # UI logging
         self.current_logs.append(f"{message}\n")
         if self.log_callback:
             self.log_callback(f"{message}\n", is_error)
+
+    def _validate_target(self, target: str) -> bool:
+        """Validate target input before any operation"""
+        if not target:
+            self.log("[!] Target is required.", is_error=True)
+            return False
+        # Remove any leading/trailing whitespace
+        target = target.strip()
+        is_valid, error = InputValidator.validate_target(target)
+        if not is_valid:
+            # Check for domain if IP fails
+            is_valid_domain, domain_err = InputValidator.validate_domain(target)
+            if not is_valid_domain:
+                self.log(f"[!] Security Validation Failed: {error}", is_error=True)
+                return False
+        return True
 
     def report_finding(self, data):
         self.last_findings.append(data)
@@ -542,6 +574,12 @@ class ScannerTools:
 
     def nmap_nessus_scan(self, target, intensity=3, scan_type="Standard"):
         def real_nmap():
+            # Validate target
+            is_valid, error = InputValidator.validate_target(target)
+            if not is_valid:
+                self.log(f"[!] Security Validation Failed: {error}", is_error=True)
+                return False
+
             # Intensity 1-5 maps to T1-T5
             t_flag = f"-T{intensity}"
             
@@ -549,37 +587,48 @@ class ScannerTools:
             self.log(f"[*] Starting {display_name} on {target} (Intensity: {intensity})...")
             self.report_progress(5)
             
-            try:
-                # Base command
-                cmd = ["nmap", "-sV", t_flag]
+            # Check if nmap is available
+            if self.executor.is_tool_available('nmap'):
+                try:
+                    # Base options
+                    options = ["-sV", t_flag]
+                    
+                    if scan_type == "Super sneaky":
+                        options += ["-f", "--mtu", "8", "--data-length", "24", "--scan-delay", "10s"]
+                        self.log("[!] Sneaky Mode: Using fragmentation, custom MTU, and high scan delay.")
+                    elif scan_type == "Loud":
+                        options += ["-Pn", "-A", "--script", "default,discovery,vuln,exploit"]
+                        self.log("[!] Loud Mode: Comprehensive OS detection, versioning, and aggressive scripting enabled.")
+                    else:
+                        options += ["--script", "vuln"]
+                    
+                    if intensity >= 4:
+                        options.append("--script-args=unsafe=1") # More intrusive
+                    
+                    # Use SafeExecutor
+                    cmd = [self.executor.tool_paths['nmap']] + options + [target]
+                    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=False)
+                    
+                    for line in iter(process.stdout.readline, ''):
+                        if self.is_stopped():
+                            process.terminate()
+                            self.log("[!] Scan terminated by user.")
+                            break
+                        self.log(f"    {line.strip()}")
+                        self.report_progress(min(90, 5 + len(line)))
+                    process.wait()
+                    self.report_progress(100)
+                    return process.returncode == 0
+                except Exception as e:
+                    self.log(f"[!] Error running nmap: {e}", is_error=True)
+            else:
+                self.log("[!] nmap not found in PATH. Using Functional Simulation...")
+                sim_output = ToolSimulator.simulate_nmap(target, [t_flag])
+                for line in sim_output.strip().split('\n'):
+                    self.log(f"    {line}")
+                    time.sleep(0.05)
                 
-                if scan_type == "Super sneaky":
-                    cmd += ["-f", "--mtu", "8", "--data-length", "24", "--scan-delay", "10s"]
-                    self.log("[!] Sneaky Mode: Using fragmentation, custom MTU, and high scan delay.")
-                elif scan_type == "Loud":
-                    cmd += ["-Pn", "-A", "--script", "default,discovery,vuln,exploit"]
-                    self.log("[!] Loud Mode: Comprehensive OS detection, versioning, and aggressive scripting enabled.")
-                else:
-                    cmd += ["--script", "vuln"]
-                
-                if intensity >= 4:
-                    cmd.append("--script-args=unsafe=1") # More intrusive
-                
-                cmd.append(target)
-                
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-                for line in iter(process.stdout.readline, ''):
-                    if self.is_stopped():
-                        process.terminate()
-                        self.log("[!] Scan terminated by user.")
-                        break
-                    self.log(f"    {line.strip()}")
-                    self.report_progress(min(90, 5 + len(line)))
-                process.wait()
-                self.report_progress(100)
-                return process.returncode == 0
-            except FileNotFoundError:
-                self.log("[!] nmap not found in PATH. Performing Advanced Port Scan & Service Audit...")
+                self.log("\n[!] Starting Fallback Advanced Port Scan & Service Audit...")
                 
                 # Logic for different scan types
                 if scan_type == "Super sneaky":
@@ -652,6 +701,8 @@ class ScannerTools:
 
     def port_scan(self, target, intensity=3):
         def real_port_scan():
+            if not self._validate_target(target):
+                return False
             # Scale ports based on intensity
             port_counts = {1: 10, 2: 25, 3: 50, 4: 100, 5: 500}
             count = port_counts.get(intensity, 50)
@@ -688,7 +739,19 @@ class ScannerTools:
 
     def ping_sweep(self, target, intensity=3):
         def real_ping():
-            base_ip = ".".join(target.split(".")[:-1])
+            # Validate target (extract base IP)
+            parts = target.split(".")
+            if len(parts) != 4:
+                self.log(f"[!] Invalid target for ping sweep: {target}", is_error=True)
+                return False
+            
+            base_ip = ".".join(parts[:-1])
+            # Validate base_ip
+            is_valid_base, _ = InputValidator.validate_ip(f"{base_ip}.1")
+            if not is_valid_base:
+                self.log(f"[!] Security Validation Failed: {target}", is_error=True)
+                return False
+
             # Scale range based on intensity
             ranges = {1: 5, 2: 20, 3: 50, 4: 100, 5: 254}
             max_ip = ranges.get(intensity, 50)
@@ -699,11 +762,16 @@ class ScannerTools:
                 if self.is_stopped(): break
                 self.report_progress(5 + int((i / max_ip) * 95))
                 ip = f"{base_ip}.{i}"
+                
+                # Check tool availability (ping is common)
                 param = '-n' if os.name == 'nt' else '-c'
-                # Timeout also scales
                 w_val = '200' if intensity >= 4 else '500'
+                
+                # Use absolute path for ping if possible, or just trust standard list
                 command = ['ping', param, '1', '-w', w_val, ip]
-                if subprocess.call(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+                
+                # Execute safely
+                if subprocess.call(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=False) == 0:
                     self.log(f"    [+] {ip} is ALIVE")
                     self.report_finding({"IP": ip, "Status": "ALIVE"})
                 elif intensity >= 4: # Only log unreachable on high intensity
@@ -715,6 +783,8 @@ class ScannerTools:
 
     def sniffer(self, target, intensity=3):
         def real_sniffer():
+            if not self._validate_target(target):
+                return False
             counts = {1: 2, 2: 5, 3: 15, 4: 50, 5: 200}
             pkt_count = counts.get(intensity, 15)
             self.log(f"[*] Sniffing for traffic related to {target} (Intensity: {intensity}, Packets: {pkt_count})...")
@@ -755,6 +825,8 @@ class ScannerTools:
 
     def packet_interceptor(self, target, intensity=3):
         def real_interceptor():
+            if not self._validate_target(target):
+                return False
             self.log(f"[*] Initializing Packet Interceptor on {target} (Intensity: {intensity})...")
             self.log("[*] Monitoring for text messages, chat data, and file transfers...")
             self.report_progress(5)
@@ -840,6 +912,8 @@ class ScannerTools:
 
     def nikto_lite(self, target, intensity=3):
         def real_nikto():
+            if not self._validate_target(target):
+                return False
             self.log(f"[*] Nikto-Lite starting on {target} (Intensity: {intensity})...")
             self.report_progress(5)
             
@@ -982,6 +1056,8 @@ class ScannerTools:
 
     def dir_brute(self, target, brute_type="Common Directories"):
         def real_dir_brute():
+            if not self._validate_target(target):
+                return False
             self.log(f"[*] Starting DirBrute on {target} (Type: {brute_type})...")
             self.report_progress(5)
             
@@ -1063,6 +1139,8 @@ class ScannerTools:
 
     def cve_search(self, target, intensity=3):
         def real_cve_search():
+            if not self._validate_target(target):
+                return False
             self.log(f"[*] Searching for CVEs related to {target} (Intensity: {intensity})...")
             self.report_progress(10)
             
@@ -1153,10 +1231,19 @@ class ScannerTools:
 
     def wpscan_lite(self, target, intensity=3):
         def real_wpscan():
+            if not self._validate_target(target):
+                return False
             self.log(f"[*] Starting WPScan-Lite on {target} (Intensity: {intensity})...")
             self.report_progress(5)
-            
             url = f"http://{target}"
+            is_valid_url, _ = InputValidator.validate_url(url)
+            if not is_valid_url:
+                # Try https
+                url = f"https://{target}"
+                is_valid_url, _ = InputValidator.validate_url(url)
+                if not is_valid_url:
+                    self.log(f"[!] Invalid target URL for WPScan: {target}", is_error=True)
+                    return False
             self.log("[*] Probing for WordPress installation...")
             
             wp_found = False
@@ -1213,26 +1300,52 @@ class ScannerTools:
         def real_win_audit():
             self.log(f"[*] Performing Windows System Audit (Intensity: {intensity})...")
             self.report_progress(5)
+            
+            if os.name != 'nt':
+                self.log("[!] Windows Audit can only be run on Windows systems.", is_error=True)
+                return False
+
             try:
+                # Define commands as argument lists (Safe)
                 cmds = {
-                    "OS Name": "systeminfo | findstr /B /C:\"OS Name\"",
-                    "Admin Users": "net localgroup administrators"
+                    "OS Name": ["systeminfo"], # We will filter in Python
+                    "Admin Users": ["net", "localgroup", "administrators"]
                 }
                 if intensity >= 3:
-                    cmds["Listening Ports"] = "netstat -an | findstr LISTENING"
+                    cmds["Listening Ports"] = ["netstat", "-an"]
                 if intensity >= 5:
-                    cmds["Environment"] = "set"
-                    cmds["Patches"] = "wmic qfe get Caption,Description,HotFixID,InstalledOn"
+                    cmds["Environment"] = ["set"] # 'set' is a shell builtin, might need 'cmd /c set'
+                    cmds["Patches"] = ["wmic", "qfe", "get", "Caption,Description,HotFixID,InstalledOn"]
 
                 total = len(cmds)
                 for idx, (desc, cmd) in enumerate(cmds.items()):
                     self.report_progress(5 + int((idx / total) * 95))
                     self.log(f"--- {desc} ---")
                     try:
-                        res = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True)
-                        self.log(res)
-                        self.report_finding({"Audit Item": desc, "Detail": res.split('\n')[0].strip()})
-                    except: self.log(f"[!] Failed to run {cmd}")
+                        # Special handling for 'set' which is a builtin
+                        actual_cmd = cmd
+                        if cmd[0] == "set":
+                            actual_cmd = ["cmd", "/c", "set"]
+                        
+                        # Use subprocess.check_output with shell=False
+                        res = subprocess.check_output(actual_cmd, shell=False, stderr=subprocess.STDOUT, text=True)
+                        
+                        # Apply filtering in Python instead of findstr
+                        if desc == "OS Name":
+                            for line in res.splitlines():
+                                if line.startswith("OS Name:"):
+                                    self.log(line)
+                                    self.report_finding({"Audit Item": desc, "Detail": line.split(':', 1)[1].strip()})
+                                    break
+                        elif desc == "Listening Ports":
+                            for line in res.splitlines():
+                                if "LISTENING" in line:
+                                    self.log(line)
+                        else:
+                            self.log(res)
+                            self.report_finding({"Audit Item": desc, "Detail": res.split('\n')[0].strip()})
+                    except Exception as e: 
+                        self.log(f"[!] Failed to run {' '.join(cmd)}: {e}")
                 self.report_progress(100)
                 return True
             except Exception as e:
@@ -1243,13 +1356,15 @@ class ScannerTools:
 
     def linpeas_audit(self, target=None, intensity=3):
         def real_linpeas():
+            if target and not self._validate_target(target):
+                return False
             self.log(f"[*] Initializing LinPeas Privilege Escalation Audit (Intensity: {intensity})...")
             self.report_progress(10)
             
             if os.name == 'nt':
                 self.log("[*] Detected Windows Environment. Checking for WSL (Windows Subsystem for Linux)...")
                 try:
-                    wsl_check = subprocess.check_output("wsl --list --running", shell=True, text=True, stderr=subprocess.STDOUT)
+                    wsl_check = subprocess.check_output(["wsl", "--list", "--running"], shell=False, text=True, stderr=subprocess.STDOUT)
                     self.log(f"[+] WSL Instances found:\n{wsl_check}")
                     self.report_finding({"Item": "WSL Detected", "Status": "Vulnerable/Informational", "Detail": "Linux environment available on host"})
                 except:
@@ -1262,10 +1377,17 @@ class ScannerTools:
             try:
                 self.log("[*] Checking for Unquoted Service Paths...")
                 # This command finds auto-start services with spaces in path and no quotes
-                cmd = 'wmic service get name,displayname,pathname,startmode | findstr /i "Auto" | findstr /i /v "C:\\Windows\\\\" | findstr /i /v """'
-                output = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.STDOUT)
-                if output.strip():
-                    self.log(f"    [!] VULNERABLE: Found potential unquoted service paths:\n{output}")
+                cmd = ["wmic", "service", "get", "name,displayname,pathname,startmode"]
+                res = subprocess.check_output(cmd, shell=False, text=True, stderr=subprocess.STDOUT)
+                
+                output = []
+                for line in res.splitlines():
+                    if "Auto" in line and "C:\\Windows\\" not in line and '"' not in line:
+                        output.append(line)
+                
+                if output:
+                    final_output = "\n".join(output)
+                    self.log(f"    [!] VULNERABLE: Found potential unquoted service paths:\n{final_output}")
                     self.report_finding({"Check": "Unquoted Service Path", "Finding": "Potential path injection found", "Severity": "High"})
                 else:
                     self.log("    [+] No unquoted service paths found.")
@@ -1278,9 +1400,9 @@ class ScannerTools:
                 self.log("[*] Checking AlwaysInstallElevated registry keys...")
                 found_elevated = False
                 for hive in ["HKCU", "HKLM"]:
-                    cmd = f'reg query {hive}\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated'
+                    cmd = ["reg", "query", f"{hive}\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer", "/v", "AlwaysInstallElevated"]
                     try:
-                        output = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.STDOUT)
+                        output = subprocess.check_output(cmd, shell=False, text=True, stderr=subprocess.STDOUT)
                         if "0x1" in output:
                             self.log(f"    [!] CRITICAL: AlwaysInstallElevated is ENABLED in {hive}")
                             self.report_finding({"Check": "AlwaysInstallElevated", "Finding": f"Enabled in {hive}", "Severity": "Critical"})
@@ -1328,8 +1450,8 @@ class ScannerTools:
                 try:
                     self.log("[*] Querying Windows Audit Policy...")
                     # Get audit policy for all categories
-                    cmd = "auditpol /get /category:*"
-                    output = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.STDOUT)
+                    cmd = ["auditpol", "/get", "/category:*"]
+                    output = subprocess.check_output(cmd, shell=False, text=True, stderr=subprocess.STDOUT)
                     self.log("    [+] Audit Policy retrieved.")
                     
                     # Check for some critical ones
@@ -1379,6 +1501,8 @@ class ScannerTools:
 
     def ftp_brute(self, target, intensity=3):
         def real_ftp_brute():
+            if not self._validate_target(target):
+                return False
             self.log(f"[*] Attempting FTP Brute Force on {target} (Intensity: {intensity})...")
             self.report_progress(5)
             # Scale wordlists based on intensity
@@ -1418,6 +1542,8 @@ class ScannerTools:
 
     def subdomain_scan(self, target, intensity=3):
         def real_subdomain():
+            if not self._validate_target(target):
+                return False
             counts = {1: 5, 2: 10, 3: 20, 4: 50, 5: 100}
             count = counts.get(intensity, 20)
             self.log(f"[*] Enumerating subdomains for {target} (Intensity: {intensity}, Max: {count})...")
@@ -1454,6 +1580,8 @@ class ScannerTools:
 
     def ddos_attack(self, target, attack_type="UDP Flood", duration=10, threads=10):
         def real_ddos():
+            if not self._validate_target(target):
+                return False
             self.log(f"[*] Starting {attack_type} on {target} for {duration}s with {threads} threads...")
             self.report_progress(5)
             start_time = time.time()
@@ -1498,11 +1626,17 @@ class ScannerTools:
 
     def db_breacher(self, target, payload_list="Auth Bypass"):
         def real_breacher():
+            if not self._validate_target(target):
+                return False
+            url = f"http://{target}"
+            is_valid_url, _ = InputValidator.validate_url(url)
+            if not is_valid_url:
+                self.log(f"[!] Invalid target URL for DB Breacher: {target}", is_error=True)
+                return False
             self.log(f"[*] Initializing DB Breacher on {target}...")
             self.log(f"[*] Method: {payload_list} Extraction")
             self.report_progress(5)
             
-            url = f"http://{target}"
             self.log("[*] Probing for database entry points and API leaks...")
             
             # Real probing for common database-backed endpoints
@@ -1560,9 +1694,15 @@ class ScannerTools:
 
     def sql_map_lite(self, target, payload_list="Auth Bypass"):
         def real_sqlmap_scan():
+            if not self._validate_target(target):
+                return False
+            url = f"http://{target}/?id=1"
+            is_valid_url, _ = InputValidator.validate_url(url)
+            if not is_valid_url:
+                self.log(f"[!] Invalid target URL for SQLMap: {target}", is_error=True)
+                return False
             self.log(f"[*] Testing {target} for SQL injection (Payload List: {payload_list})...")
             self.report_progress(5)
-            url = f"http://{target}/?id=1"
             
             # Map payload lists to actual payloads
             payload_map = {
@@ -1961,6 +2101,8 @@ class ScannerTools:
 
     def wireshark_launch(self, target, intensity=3):
         def launch_wireshark():
+            if not self._validate_target(target):
+                return False
             self.log(f"[*] Initializing Wireshark capture for {target}...")
             self.report_progress(20)
             
@@ -2210,14 +2352,48 @@ class ScannerTools:
 
     def custom_command(self, target, command_template):
         def run_custom():
+            # Validate target
+            is_valid_target, target_error = InputValidator.validate_target(target)
+            if not is_valid_target:
+                self.log(f"[!] Target Validation Failed: {target_error}", is_error=True)
+                return False
+
             # Replace placeholder with target
-            cmd = command_template.replace("{target}", target)
-            self.log(f"[*] Executing custom command: {cmd}")
+            cmd_str = command_template.replace("{target}", target)
+            self.log(f"[*] Executing custom command: {cmd_str}")
             self.report_progress(20)
             
             try:
-                # Use shell=True for flexible custom commands
-                process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                # Security: Even for custom commands, we must NOT use shell=True with user input
+                # We will try to parse the command string into a list
+                import shlex
+                try:
+                    cmd_list = shlex.split(cmd_str)
+                except ValueError as e:
+                    self.log(f"[!] Command parsing error: {e}", is_error=True)
+                    return False
+
+                if not cmd_list:
+                    return False
+
+                tool = cmd_list[0]
+                args = cmd_list[1:]
+
+                # Check if tool is allowed
+                if not self.executor.is_tool_available(tool):
+                    self.log(f"[!] Tool '{tool}' is not in the allowed list or not installed.", is_error=True)
+                    return False
+
+                # Check arguments for shell metacharacters
+                for arg in args:
+                    if InputValidator.contains_shell_metacharacters(arg):
+                        self.log(f"[!] Dangerous character detected in argument: {arg}", is_error=True)
+                        return False
+
+                # Use absolute path for tool
+                cmd_list[0] = self.executor.tool_paths[tool]
+
+                process = subprocess.Popen(cmd_list, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 for line in iter(process.stdout.readline, ''):
                     if self.is_stopped():
                         process.terminate()
@@ -2228,10 +2404,10 @@ class ScannerTools:
                 self.report_progress(100)
                 
                 if process.returncode == 0:
-                    self.report_finding({"Command": cmd, "Status": "Success"})
+                    self.report_finding({"Command": cmd_str, "Status": "Success"})
                     return True
                 else:
-                    self.report_finding({"Command": cmd, "Status": "Failed", "Exit Code": process.returncode})
+                    self.report_finding({"Command": cmd_str, "Status": "Failed", "Exit Code": process.returncode})
                     return False
             except Exception as e:
                 self.log(f"[!] Custom Command Error: {e}", is_error=True)

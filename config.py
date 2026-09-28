@@ -24,9 +24,12 @@ Usage:
 
 import os
 import base64
-import logging
 from pathlib import Path
 from typing import Optional
+from secure_logger import get_logger
+
+# Set up secure logging
+logger = get_logger('application')
 
 # Try to load .env file
 try:
@@ -35,54 +38,54 @@ try:
 
     # Priority 1: PyInstaller temp directory (where bundled files are extracted)
     if getattr(sys, 'frozen', False):
-        logging.info("Running as frozen executable (PyInstaller)")
+        logger.info("Running as frozen executable (PyInstaller)")
         # Get the PyInstaller temp directory
         if hasattr(sys, '_MEIPASS'):
             # PyInstaller creates a temp folder and stores path in _MEIPASS
             bundle_dir = Path(sys._MEIPASS)
-            logging.info(f"PyInstaller _MEIPASS directory: {bundle_dir}")
+            logger.info(f"PyInstaller _MEIPASS directory: {bundle_dir}")
             env_path = bundle_dir / '.env'
-            logging.info(f"Checking for .env at: {env_path}")
-            logging.info(f".env exists: {env_path.exists()}")
+            logger.info(f"Checking for .env at: {env_path}")
+            logger.info(f".env exists: {env_path.exists()}")
             if env_path.exists():
                 result = load_dotenv(env_path)
-                logging.info(f"load_dotenv() returned: {result}")
-                logging.info(f"Loaded configuration from PyInstaller bundle: {env_path}")
+                logger.info(f"load_dotenv() returned: {result}")
+                logger.info(f"Loaded configuration from PyInstaller bundle: {env_path}")
                 # Print first few characters of loaded vars for debugging
                 import os
-                logging.info(f"L8_DB_HOST after load: {os.getenv('L8_DB_HOST', 'NOT SET')}")
+                logger.info("L8_DB_HOST after load checked")
             else:
-                logging.warning(f".env not found in PyInstaller bundle: {env_path}")
+                logger.warning(f".env not found in PyInstaller bundle: {env_path}")
                 # List files in bundle directory
                 try:
                     files = list(bundle_dir.glob('*'))
-                    logging.info(f"Files in bundle dir: {[f.name for f in files[:10]]}")
+                    logger.info("Files in bundle dir checked")
                 except Exception as e:
-                    logging.error(f"Error listing bundle dir: {e}")
+                    logger.error(f"Error listing bundle dir: {e}")
         else:
-            logging.warning("sys._MEIPASS not found")
+            logger.warning("sys._MEIPASS not found")
 
         # Also check next to executable (for user-provided .env overrides)
         exe_dir = Path(sys.executable).parent
         env_path = exe_dir / '.env'
         if env_path.exists():
             load_dotenv(env_path, override=True)  # Override bundled config
-            logging.info(f"Loaded configuration from executable directory: {env_path}")
+            logger.info(f"Loaded configuration from executable directory: {env_path}")
 
     # Priority 2: In the same directory as this file (dev environment)
     env_path = Path(__file__).parent / '.env'
     if env_path.exists():
         load_dotenv(env_path, override=False)
-        logging.info(f"Loaded configuration from {env_path}")
+        logger.info(f"Loaded configuration from {env_path}")
 
     # Priority 3: Parent directory (dev environment fallback)
     env_path = Path(__file__).parent.parent / '.env'
     if env_path.exists():
         load_dotenv(env_path, override=False)
-        logging.info(f"Loaded configuration from {env_path}")
+        logger.info(f"Loaded configuration from {env_path}")
 
 except ImportError:
-    logging.warning("python-dotenv not installed, using environment variables only")
+    logger.warning("python-dotenv not installed, using environment variables only")
 
 
 class Config:
@@ -108,11 +111,11 @@ class Config:
         self.db_dialect = os.getenv('L8_DB_DIALECT', 'mysql')
         
         # MySQL configuration
-        self.db_host = os.getenv('L8_DB_HOST') or os.getenv('MYSQL_HOST', '127.0.0.1')
-        self.db_port = int(os.getenv('L8_DB_PORT') or os.getenv('MYSQL_PORT', '3306'))
-        self.db_name = os.getenv('L8_DB_NAME') or os.getenv('MYSQL_DATABASE', 'u844677182_app')
-        self.db_user = os.getenv('L8_DB_USER') or os.getenv('MYSQL_USER', 'u844677182_Layer8Database')
-        self.db_pass = os.getenv('L8_DB_PASS') or os.getenv('MYSQL_PASSWORD', 'Layer8WJA')
+        self.db_host = os.getenv('L8_DB_HOST') or os.getenv('MYSQL_HOST')
+        self.db_port = int(os.getenv('L8_DB_PORT') or os.getenv('MYSQL_PORT', '0'))
+        self.db_name = os.getenv('L8_DB_NAME') or os.getenv('MYSQL_DATABASE')
+        self.db_user = os.getenv('L8_DB_USER') or os.getenv('MYSQL_USER')
+        self.db_pass = os.getenv('L8_DB_PASS') or os.getenv('MYSQL_PASSWORD')
         
         # SQLite configuration
         self.db_path = os.getenv('L8_DB_PATH')
@@ -147,9 +150,8 @@ class Config:
             if pepper_file.exists():
                 self.pepper = pepper_file.read_text().strip()
             else:
-                # Development fallback - MUST BE CHANGED IN PRODUCTION
-                self.pepper = 'DEV-PEPPER-CHANGE-ME-IN-PRODUCTION'
-                logging.warning('Using default pepper! Set L8_PEPPER environment variable in production.')
+                # No development fallback
+                self.pepper = None
         
         # Password Encryption Key
         self.pwd_key_id = os.getenv('L8_PWD_KEY_ID', 'k1')
@@ -163,7 +165,7 @@ class Config:
                 if len(decoded) >= 32:
                     self.pwd_key_bytes = decoded[:32]  # Normalize to exactly 32 bytes
             except Exception as e:
-                logging.error(f"Failed to decode L8_PWD_KEY_B64: {e}")
+                logger.error(f"Failed to decode L8_PWD_KEY_B64: {e}")
         
         # Try to load from file if not set via environment variable
         if not self.pwd_key_bytes:
@@ -172,19 +174,18 @@ class Config:
                 try:
                     self.pwd_key_bytes = key_file.read_bytes()
                 except Exception as e:
-                    logging.error(f"Failed to read key file: {e}")
+                    logger.error(f"Failed to read key file: {e}")
         
-        # Development fallback - derive from default (MUST BE CHANGED IN PRODUCTION)
-        if not self.pwd_key_bytes or len(self.pwd_key_bytes) < 32:
-            import hashlib
-            self.pwd_key_bytes = hashlib.sha256(b'DEV-PWD-KEY-CHANGE-ME-IN-PRODUCTION').digest()
-            logging.warning('Using default encryption key! Set L8_PWD_KEY_B64 environment variable in production.')
+        # No development fallback
+        if not self.pwd_key_bytes:
+            logger.error('Encryption key NOT SET! Set L8_PWD_KEY_B64 environment variable.')
         
         # Normalize to exactly 32 bytes
-        if len(self.pwd_key_bytes) > 32:
-            self.pwd_key_bytes = self.pwd_key_bytes[:32]
-        elif len(self.pwd_key_bytes) < 32:
-            self.pwd_key_bytes = self.pwd_key_bytes + b'\x00' * (32 - len(self.pwd_key_bytes))
+        if self.pwd_key_bytes:
+            if len(self.pwd_key_bytes) > 32:
+                self.pwd_key_bytes = self.pwd_key_bytes[:32]
+            elif len(self.pwd_key_bytes) < 32:
+                self.pwd_key_bytes = self.pwd_key_bytes + b'\x00' * (32 - len(self.pwd_key_bytes))
         
         # Argon2id Parameters
         self.argon_memory_cost = int(os.getenv('L8_ARGON_MEMORY_COST', str(1 << 17)))  # 131072 = 128 MB
@@ -228,10 +229,10 @@ class Config:
         
         # Log validation results
         for error in errors:
-            logging.error(f"CONFIG ERROR: {error}")
+            logger.error(f"CONFIG ERROR: {error}")
         
         for warning in warnings:
-            logging.warning(f"CONFIG WARNING: {warning}")
+            logger.warning(f"CONFIG WARNING: {warning}")
         
         if errors:
             raise ValueError(f"Configuration validation failed: {'; '.join(errors)}")
@@ -288,14 +289,12 @@ def get_config() -> Config:
 try:
     config = get_config()
 except Exception as e:
-    logging.error(f"Failed to load configuration: {e}")
+    logger.error(f"Failed to load configuration: {e}")
     config = None
 
 
 if __name__ == "__main__":
     # Test configuration loading
-    logging.basicConfig(level=logging.INFO)
-    
     try:
         test_config = Config()
         print("\n" + "="*80)

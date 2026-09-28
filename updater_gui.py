@@ -11,6 +11,10 @@ import threading
 from pathlib import Path
 from typing import Optional, Callable
 from updater import Layer8Updater
+from secure_logger import get_logger
+
+# Set up secure logging
+logger = get_logger('application')
 
 
 class UpdaterGUI:
@@ -212,6 +216,7 @@ The application will restart after the update."""
             self.parent.after(0, self._show_success)
         
         except Exception as e:
+            logger.error(f"Update failed: {e}", exc_info=True)
             self._show_error(f"Update failed: {str(e)}")
     
     def _update_progress(self, percent: float, message: str):
