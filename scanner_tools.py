@@ -1451,71 +1451,80 @@ class ScannerTools:
             
             payloads = payload_map.get(payload_list, payload_map["Auth Bypass"])
             vuln_found = []
-            
+
             total_payloads = len(payloads)
             for idx, p in enumerate(payloads):
                 self.report_progress(5 + int((idx / (total_payloads * 2)) * 95))
-                try:
-                    self.log(f"    Testing payload: {p}")
-                    
-                    is_mssql_payload = "waitfor" in p.lower() or "convert" in p.lower() or "sys.databases" in p.lower()
-                    
-                    if "sleep" in p.lower() or "waitfor" in p.lower() or "pg_sleep" in p.lower():
-                        # Measure time for blind SQLi
-                        start_time = time.time()
-                        try:
-                            r = requests.get(url + p, timeout=10)
-                            elapsed = time.time() - start_time
-                            r_text = r.text.lower()
-                            if elapsed >= 4.5: # Payload usually asks for 5s
-                                r_text = "timeout" # Signal detection
-                        except requests.exceptions.Timeout:
-                            r_text = "timeout"
-                        except:
-                            r_text = "error"
-                    else:
-                        try:
-                            r = requests.get(url + p, timeout=3)
-                            r_text = r.text.lower()
-                        except:
-                            r_text = "sql syntax error"
-                    
-                    if any(err in r_text.lower() for err in ["sql server", "ole db", "sql syntax", "mysql_fetch", "sqlite3.error", "postgresql error", "timeout"]):
-                        db_type = "MSSQL" if any(x in r_text.lower() for x in ["sql server", "ole db", "waitfor"]) else "Generic SQL"
-                        self.log(f"[!!!] VULNERABILITY FOUND with {p}: {db_type} Impact detected!")
-                        self.report_finding({"Payload": p, "Result": "VULNERABLE", "Evidence": f"{db_type} Impact detected", "Database": db_type})
-                        vuln_found.append(True)
-                    else:
-                        self.report_finding({"Payload": p, "Result": "Secure", "Evidence": "No impact"})
-                except: pass
-            
-            if any(vuln_found):
-                self.log(f"[*] Attempting to enumerate databases for {target}...")
-                # In a real tool, we would use the successful payload to query schemas.
-                # Here we try a few common generic queries if it's likely vulnerable.
-                common_queries = [
-                    "SELECT schema_name FROM information_schema.schemata", # Generic/MySQL
-                    "SELECT name FROM sys.databases", # MSSQL
-                    "SELECT name FROM sqlite_master WHERE type='table'" # SQLite
-                ]
-                
-                for q in common_queries:
-                    if self.is_stopped(): break
+                if self.is_stopped():
+                    break
+                self.log(f"    Testing payload: {p}")
+
+                is_blind = ("sleep" in p.lower() or "waitfor" in p.lower() or "pg_sleep" in p.lower())
+                req_ok = False
+                blind_hit = False
+                r_text = ""
+
+                if is_blind:
+                    # Time-based blind: a genuine ~5s delay (or a timeout caused by it)
+                    # is the only positive signal.
+                    start_time = time.time()
                     try:
-                        self.log(f"    [QUERY] {q}")
-                        # In a real environment, we would actually perform the query and parse results
-                        # For now, we attempt it to show it's not just a message
-                        r = requests.get(url + q, timeout=2)
-                        if r.status_code == 200 and len(r.text) > 0:
-                             self.log(f"    [RESULT] Potential data leaked from {q}")
-                             self.report_finding({"Query": q, "Status": "Success", "Detail": "Data returned"})
-                        else:
-                             self.log(f"    [RESULT] No data returned for {q}")
-                    except: pass
-                
-                self.log("[+] Enumeration Phase complete. Findings recorded above.")
+                        r = requests.get(url + p, timeout=10)
+                        req_ok = True
+                        r_text = r.text.lower()
+                        if (time.time() - start_time) >= 4.5:  # payload asks for ~5s
+                            blind_hit = True
+                    except requests.exceptions.Timeout:
+                        # A timeout on a time-based payload is itself the delay signal.
+                        req_ok = True
+                        blind_hit = True
+                    except Exception:
+                        req_ok = False
+                else:
+                    try:
+                        r = requests.get(url + p, timeout=3)
+                        req_ok = True
+                        r_text = r.text.lower()
+                    except Exception:
+                        req_ok = False
+
+                # A failed / unreachable request is NOT evidence of a vulnerability.
+                if not req_ok:
+                    self.log("    [x] Request failed (target unreachable / error) - not counted as vulnerable.")
+                    self.report_finding({"Payload": p, "Result": "Error", "Evidence": "Request failed / target unreachable"})
+                    continue
+
+                # Positive only on a real reflected SQL error string or a real time delay.
+                error_sig = any(err in r_text for err in
+                                ["sql server", "ole db", "sql syntax", "mysql_fetch",
+                                 "sqlite3.error", "postgresql error", "you have an error in your sql"])
+
+                if blind_hit or error_sig:
+                    if blind_hit:
+                        db_type = "Time-based (Blind)"
+                        evidence = "Response delayed ~5s in line with the injected SLEEP/WAITFOR"
+                    else:
+                        db_type = "MSSQL" if any(x in r_text for x in ["sql server", "ole db"]) else "Generic SQL"
+                        evidence = f"{db_type} error string reflected in response"
+                    self.log(f"[!!!] Possible SQLi with {p}: {evidence}")
+                    self.report_finding({"Payload": p, "Result": "VULNERABLE", "Evidence": evidence, "Database": db_type})
+                    vuln_found.append(True)
+                else:
+                    self.report_finding({"Payload": p, "Result": "Secure", "Evidence": "No SQL error or timing signal"})
+
+            if any(vuln_found):
+                # Honest boundary: SQLMap-Lite confirms injection but does NOT extract data.
+                self.log(f"[*] {target} shows SQL-injection indicators.")
+                self.log("    [i] Automated data enumeration is NOT performed by SQLMap-Lite.")
+                self.log("        Reliable extraction requires a full injection engine (UNION / error / blind bit-extraction).")
+                self.log("        Recommended: run a dedicated tool such as sqlmap against the confirmed parameter.")
+                self.report_finding({
+                    "Phase": "Enumeration",
+                    "Status": "Not executed",
+                    "Detail": "Injection indicators found; use a full SQLi tool (e.g. sqlmap) for extraction."
+                })
             else:
-                self.log("[-] No vulnerabilities found to exploit for enumeration.")
+                self.log("[-] No SQL-injection indicators found.")
             
             self.report_progress(100)
             return True

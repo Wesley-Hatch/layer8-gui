@@ -1215,7 +1215,10 @@ def main(db_available=None, db_error=None):
                 db = DatabaseConnection()
                 success, error = db.connect()
                 if success:
-                    cursor = db.connection.cursor(dictionary=True)
+                    # pymysql connections are already configured with DictCursor
+                    # in DatabaseConnection.connect(); the 'dictionary=' kwarg is
+                    # mysql-connector-only and raises on pymysql.
+                    cursor = db.connection.cursor()
                     cursor.execute("SELECT username, email, is_admin FROM user_logins")
                     users = cursor.fetchall()
                     db.close()
