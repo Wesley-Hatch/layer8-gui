@@ -218,12 +218,13 @@ class DatabaseConnection:
         Returns:
             str: Argon2id hash in PHC format ($argon2id$...)
         """
+        # Use 'colon' style to match PHP: hash("$argon2id", password . ":" . pepper).
+        # Computed before the try so the except blocks can safely reference it.
+        peppered = self.pepper_password(password, style='colon')
+
         try:
             from argon2 import PasswordHasher
             from argon2.low_level import Type
-
-            # Use 'colon' style to match current PHP reset behavior
-            peppered = self.pepper_password(password, style='colon')
 
             # Match PHP's argon options exactly
             ph = PasswordHasher(
