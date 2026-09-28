@@ -1307,15 +1307,16 @@ def main(db_available=None, db_error=None):
         summary_id = canvas.create_window(212, 580, window=summary_frame, anchor="center")
         
         columns = ("Time", "Tool/Task", "Status", "Report")
-        activity_tree = ttk.Treeview(summary_frame, columns=columns, show="headings", height=10, style="Treeview")
+        activity_tree = ttk.Treeview(summary_frame, columns=columns, show="headings", height=8, style="Treeview")
         activity_tree.heading("Time", text="Time")
         activity_tree.heading("Tool/Task", text="Tool/Task")
         activity_tree.heading("Status", text="Status")
         activity_tree.heading("Report", text="Report")
-        activity_tree.column("Time", width=80, anchor="center")
+        # Widths kept so the whole table fits under the left column (~555px total)
+        activity_tree.column("Time", width=75, anchor="center")
         activity_tree.column("Tool/Task", width=150, anchor="w")
         activity_tree.column("Status", width=80, anchor="center")
-        activity_tree.column("Report", width=290, anchor="w")
+        activity_tree.column("Report", width=250, anchor="w")
         
         v_scrollbar = tk.Scrollbar(summary_frame, command=activity_tree.yview)
         v_scrollbar.pack(side="right", fill="y")
@@ -1336,7 +1337,7 @@ def main(db_available=None, db_error=None):
                 
                 # Expand window if needed
                 if len(scanner.history) > 0:
-                    update_window_size(width=650, centered_items=[welcome_id, summary_id])
+                    update_window_size(width=1180, centered_items=[])
             root.after(0, update)
 
         def show_report_details(event):
@@ -2509,7 +2510,7 @@ def main(db_available=None, db_error=None):
             render_menu()
 
         def render_menu():
-            current_width = 650
+            current_width = 1180
             
             # Clear existing tool-related items
             for item in tool_items:
@@ -2620,33 +2621,38 @@ def main(db_available=None, db_error=None):
                 ]
             }
 
-            view_btn_text = "VIEW: " + view_mode[0].upper()
-            view_btn = tk.Button(root, text=view_btn_text, bg="#1e1e1e", fg="#aaaaaa",
-                                 activebackground="#333333", activeforeground=accent_color.get(), width=18, bd=0,
-                                 font=("Segoe UI", 8, "bold"), command=toggle_view_mode, cursor="hand2")
-            tool_items.append(canvas.create_window(20, 125, window=view_btn, anchor="w"))
+            # ---- Header: WELCOME + status on the left, target + controls top-right ----
+            canvas.itemconfig(welcome_id, anchor="w")
+            canvas.coords(welcome_id, 20, 34)
+            canvas.itemconfig(status_text, anchor="w")
+            canvas.coords(status_text, 20, 64)
+            canvas.itemconfig(target_label_id, anchor="e")
+            canvas.coords(target_label_id, current_width - 20, 26)
+            canvas.itemconfig(target_window_id, anchor="e")
+            canvas.coords(target_window_id, current_width - 20, 54)
 
+            # Control buttons row (top-right)
+            hdr_btns = tk.Frame(root, bg=bg_color.get())
+            view_btn = tk.Button(hdr_btns, text="VIEW: " + view_mode[0].upper(), bg="#1e1e1e", fg="#aaaaaa",
+                                 activebackground="#333333", activeforeground=accent_color.get(), bd=0,
+                                 font=("Segoe UI", 8, "bold"), padx=8, pady=4, command=toggle_view_mode, cursor="hand2")
+            view_btn.pack(side="left", padx=(6, 0))
+            ai_btn = tk.Button(hdr_btns, text="AI FEEDBACK", bg="#1e1e1e", fg="#00ff00",
+                               activebackground="#333333", activeforeground="#00ff00", bd=0,
+                               font=("Segoe UI", 8, "bold"), padx=8, pady=4, command=show_ai_feedback_screen, cursor="hand2")
+            ai_btn.pack(side="left", padx=(6, 0))
             if is_admin:
-                admin_btn = tk.Button(root, text="ADMIN PANEL", bg="#1e1e1e", fg="#f1c40f", 
-                                       activebackground="#333333", activeforeground="#f1c40f", width=14, bd=0,
-                                       font=("Segoe UI", 8, "bold"), command=show_admin_panel, cursor="hand2")
-                tool_items.append(canvas.create_window(current_width - 20, 125, window=admin_btn, anchor="e"))
+                admin_ai_btn = tk.Button(hdr_btns, text="AI ANALYST", bg="#1e1e1e", fg="#e67e22",
+                                         activebackground="#333333", activeforeground="#e67e22", bd=0,
+                                         font=("Segoe UI", 8, "bold"), padx=8, pady=4, command=show_admin_ai_analyst, cursor="hand2")
+                admin_ai_btn.pack(side="left", padx=(6, 0))
+                admin_btn = tk.Button(hdr_btns, text="ADMIN PANEL", bg="#1e1e1e", fg="#f1c40f",
+                                      activebackground="#333333", activeforeground="#f1c40f", bd=0,
+                                      font=("Segoe UI", 8, "bold"), padx=8, pady=4, command=show_admin_panel, cursor="hand2")
+                admin_btn.pack(side="left", padx=(6, 0))
+            tool_items.append(canvas.create_window(current_width - 20, 90, window=hdr_btns, anchor="e"))
 
-                admin_ai_btn = tk.Button(root, text="AI ANALYST", bg="#1e1e1e", fg="#e67e22", 
-                                         activebackground="#333333", activeforeground="#e67e22", width=14, bd=0,
-                                         font=("Segoe UI", 8, "bold"), command=show_admin_ai_analyst, cursor="hand2")
-                tool_items.append(canvas.create_window(current_width - 130, 125, window=admin_ai_btn, anchor="e"))
-
-            ai_btn = tk.Button(root, text="AI FEEDBACK", bg="#1e1e1e", fg="#00ff00", 
-                                   activebackground="#333333", activeforeground="#00ff00", width=14, bd=0,
-                                   font=("Segoe UI", 8, "bold"), command=show_ai_feedback_screen, cursor="hand2")
-            if is_admin:
-                ai_x = current_width - 240
-            else:
-                ai_x = current_width - 20
-            tool_items.append(canvas.create_window(ai_x, 125, window=ai_btn, anchor="e"))
-
-            # --- Theme Selector ---
+            # --- Theme Selector (top-right, under the controls) ---
             def set_theme(color_hex):
                 accent_color.set(color_hex)
                 style.configure("Horizontal.TProgressbar", background=color_hex)
@@ -2655,15 +2661,10 @@ def main(db_available=None, db_error=None):
                 render_menu()
 
             theme_frame = tk.Frame(root, bg=bg_color.get())
-            theme_label = tk.Label(theme_frame, text="THEME:", bg=bg_color.get(), fg="#666666", font=("Segoe UI", 7, "bold"))
-            theme_label.pack(side="left")
-            
-            colors = [("#00ff00", "Green"), ("#3498db", "Blue"), ("#e74c3c", "Red"), ("#f1c40f", "Gold"), ("#9b59b6", "Purple")]
-            for color, name in colors:
-                btn = tk.Button(theme_frame, bg=color, width=1, height=0, bd=0, command=lambda c=color: set_theme(c), cursor="hand2")
-                btn.pack(side="left", padx=2)
-            
-            tool_items.append(canvas.create_window(20, 100, window=theme_frame, anchor="w"))
+            tk.Label(theme_frame, text="THEME", bg=bg_color.get(), fg="#666666", font=("Segoe UI", 7, "bold")).pack(side="left", padx=(0, 4))
+            for color, name in [("#00ff00", "Green"), ("#3498db", "Blue"), ("#e74c3c", "Red"), ("#f1c40f", "Gold"), ("#9b59b6", "Purple")]:
+                tk.Button(theme_frame, bg=color, width=2, height=1, bd=0, command=lambda c=color: set_theme(c), cursor="hand2").pack(side="left", padx=2)
+            tool_items.append(canvas.create_window(current_width - 20, 116, window=theme_frame, anchor="e"))
 
             # ================================================================
             # Tool grid - card-based layout.
@@ -2675,7 +2676,9 @@ def main(db_available=None, db_error=None):
             #  - Full labels (no clipping) with hover affordance
             # ================================================================
             GUTTER = 20
-            CARD_W = current_width - (GUTTER * 2)   # full-width cards
+            COLGAP = 16
+            CARD_W = current_width - (GUTTER * 2)          # full width (All Tools view)
+            COLW = (current_width - GUTTER * 2 - COLGAP) // 2   # per-column width (2-col view)
             COLS = 3
             CARD_GAP = 12
             CARD_BG = "#16181c"
@@ -2769,20 +2772,36 @@ def main(db_available=None, db_error=None):
                 build_grid(inner, tools).pack(fill="x")
                 return card
 
-            start_y = 160
+            start_y = 150
+            left_bottom = start_y
 
             if view_mode[0] == "Categorized":
-                running_y = start_y
+                # Split categories into two balanced columns (order preserved
+                # within each column) so the dashboard is wide, not tall.
+                def _rows(t):
+                    return (len(t) + COLS - 1) // COLS
+
+                left_cats, right_cats, lh, rh = [], [], 0, 0
                 for category, tools in tool_categories.items():
-                    card = build_card(category, tools)
-                    win = canvas.create_window(GUTTER, running_y, window=card,
-                                               anchor="nw", width=CARD_W)
-                    tool_items.append(win)
-                    root.update_idletasks()
-                    bbox = canvas.bbox(win)
-                    running_y = (bbox[3] if bbox else running_y + 90) + CARD_GAP
+                    if lh <= rh:
+                        left_cats.append((category, tools)); lh += _rows(tools)
+                    else:
+                        right_cats.append((category, tools)); rh += _rows(tools)
+
+                col_bottoms = []
+                for col_x, col in ((GUTTER, left_cats), (GUTTER + COLW + COLGAP, right_cats)):
+                    y = start_y
+                    for category, tools in col:
+                        card = build_card(category, tools)
+                        win = canvas.create_window(col_x, y, window=card, anchor="nw", width=COLW)
+                        tool_items.append(win)
+                        root.update_idletasks()
+                        bbox = canvas.bbox(win)
+                        y = (bbox[3] if bbox else y + 90) + CARD_GAP
+                    col_bottoms.append(y)
+                left_bottom = col_bottoms[0] if col_bottoms else start_y
             else:
-                # All Tools View - single card, alphabetized
+                # All Tools View - single full-width card, alphabetized
                 all_tools = []
                 for cat_tools in tool_categories.values():
                     all_tools.extend(cat_tools)
@@ -2793,19 +2812,20 @@ def main(db_available=None, db_error=None):
                 inner = tk.Frame(card, bg=CARD_BG)
                 inner.pack(fill="both", expand=True, padx=12, pady=12)
                 build_grid(inner, all_tools).pack(fill="x")
-                tool_items.append(canvas.create_window(GUTTER, start_y, window=card,
-                                                       anchor="nw", width=CARD_W))
+                win = canvas.create_window(GUTTER, start_y, window=card, anchor="nw", width=CARD_W)
+                tool_items.append(win)
+                root.update_idletasks()
+                bbox = canvas.bbox(win)
+                left_bottom = (bbox[3] if bbox else start_y + 300) + CARD_GAP
 
             root.update_idletasks()
-            max_cat_y = 0
-            for item in tool_items:
-                bbox = canvas.bbox(item)
-                if bbox:
-                    max_cat_y = max(max_cat_y, bbox[3])
 
-            last_y = max_cat_y + 40
-            canvas.coords(log_label_id, 20, last_y)
-            canvas.coords(summary_id, current_width / 2, last_y + 110)
+            # Activity log tucked into the bottom-left, under the (shorter) left column.
+            last_y = left_bottom + 6
+            canvas.itemconfig(log_label_id, anchor="w")
+            canvas.coords(log_label_id, GUTTER, last_y)
+            canvas.itemconfig(summary_id, anchor="nw")
+            canvas.coords(summary_id, GUTTER, last_y + 22)
 
             root.update_idletasks()
             max_y = 0
@@ -2826,7 +2846,7 @@ def main(db_available=None, db_error=None):
                                    font=("Segoe UI", 8, "bold"), command=on_logout, cursor="hand2")
             tool_items.append(canvas.create_window(current_width - 20, logout_y, window=logout_btn, anchor="e"))
             
-            update_window_size(width=current_width, centered_items=[welcome_id, summary_id, target_label_id, target_window_id])
+            update_window_size(width=current_width, centered_items=[])
 
         # Initialize menu view
         render_menu()
@@ -2836,8 +2856,8 @@ def main(db_available=None, db_error=None):
         apply_overrideredirect()
         root.deiconify()
         show_main_menu(username, is_admin, db_available=db_available)
-        # Force a resize update
-        update_window_size(width=650, target_height=750)
+        # Force a resize update (wide dashboard)
+        update_window_size(width=1180, centered_items=[])
 
     # Initially hide the main root window
     root.withdraw()
