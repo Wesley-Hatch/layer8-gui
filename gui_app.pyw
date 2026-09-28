@@ -1529,17 +1529,8 @@ def main(db_available=None, db_error=None):
                 m_spinner = tk.Spinbox(root, from_=0, to=59, width=3, textvariable=mins_var, bg="#1e1e1e", fg="#ffffff", bd=0, buttonbackground="#333333", font=("Segoe UI", 9))
                 canvas.create_window(160, current_y, window=m_spinner, anchor="w")
                 canvas.create_text(195, current_y, text="m", fill="#00ff00", font=("Segoe UI", 9, "bold"), anchor="w")
-                
-                def export_action():
-                    from tkinter import filedialog
-                    fpath = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")])
-                    if fpath:
-                        scanner.export_monitor_to_excel(fpath)
-                
-                export_btn = tk.Button(root, text="EXPORT EXCEL", bg="#1e1e1e", fg="#00ff00", bd=0, font=("Segoe UI", 8, "bold"), 
-                                       activebackground="#333333", activeforeground="#00ff00", cursor="hand2", command=export_action)
-                canvas.create_window(300, current_y, window=export_btn, anchor="w")
-                
+
+                # (Export handled by the single "Export to Excel" button in the action row below.)
                 current_y += 35
                 # Assign dummy for compatibility
                 intensity_scale = tk.Scale(root)
@@ -1583,6 +1574,10 @@ def main(db_available=None, db_error=None):
             is_custom_cmd = "Custom Cmd" in tool_name
             is_dir_brute = "DirBrute" in tool_name
             is_firewall_audit = "Firewall Audit" in tool_name
+            # Tools whose scanner method ignores intensity - don't show the slider.
+            is_no_intensity = any(x in tool_name for x in
+                                  ["CVE Search", "WPScan-Lite", "Auditd", "Burp Suite",
+                                   "Metasploit", "Rev Shell", "Web Fetch", "NSLookup"])
             
             payload_list_var = tk.StringVar(value="Auth Bypass")
             custom_cmd_var = tk.StringVar(value="ping -n 4 {target}")
@@ -1620,8 +1615,8 @@ def main(db_available=None, db_error=None):
                 # Assign dummy for compatibility
                 intensity_scale = tk.Scale(root)
                 intensity_scale.set(3)
-            elif is_dir_brute or is_firewall_audit:
-                # Dummy for compatibility, UI already added above
+            elif is_dir_brute or is_firewall_audit or is_no_intensity:
+                # These tools don't use scan intensity - no slider shown.
                 intensity_scale = tk.Scale(root)
                 intensity_scale.set(3)
             else:
