@@ -75,7 +75,13 @@ class Layer8Updater:
         """
         self.current_version = current_version
         self.update_url = update_url
-        self.app_directory = Path(app_directory)
+        # When frozen by PyInstaller (--onefile), Path(__file__).parent points into the
+        # temporary _MEIxxxx extraction dir that is deleted on exit, so writing there
+        # never updates the real install. Resolve to the directory of the running exe.
+        if getattr(sys, 'frozen', False):
+            self.app_directory = Path(sys.executable).parent
+        else:
+            self.app_directory = Path(app_directory)
         self.github_token = github_token
         self.auto_check_interval = auto_check_interval
         
@@ -442,21 +448,58 @@ class Layer8Updater:
             return None
     
     def _replace_files(self, source_dir: Path):
-        """Replace app files with updated files"""
+        """Replace app files with updated files.
+
+        On Windows the currently running executable cannot be overwritten in place,
+        but it *can* be renamed while running. So for the running exe we move the old
+        file aside to '<name>.old' first, then copy the replacement into its place.
+        Leftover '*.old' files are cleaned up on the next launch (see cleanup_stale_files).
+        """
+        running_exe = Path(sys.executable).resolve() if getattr(sys, 'frozen', False) else None
+
         # Get list of files to replace
         for item in source_dir.rglob('*'):
             if item.is_file():
                 # Calculate relative path
                 rel_path = item.relative_to(source_dir)
                 dest_path = self.app_directory / rel_path
-                
+
                 # Create parent directory if needed
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
-                
+
+                # If this destination is the running executable, move it aside first.
+                if running_exe is not None and dest_path.resolve() == running_exe:
+                    old_path = dest_path.with_suffix(dest_path.suffix + '.old')
+                    try:
+                        if old_path.exists():
+                            old_path.unlink()
+                        dest_path.rename(old_path)
+                        logger.info(f"Moved running executable aside: {old_path.name}")
+                    except Exception as e:
+                        # Re-raise so install_update triggers a rollback rather than
+                        # silently leaving a half-applied update.
+                        raise RuntimeError(f"Could not move running executable aside: {e}")
+
                 # Copy file
                 shutil.copy2(item, dest_path)
                 logger.debug(f"Updated: {rel_path}")
-    
+
+    @staticmethod
+    def cleanup_stale_files(app_directory: Path):
+        """Delete '*.old' files left behind by a previous self-update.
+
+        Call this once early at application startup, before checking for updates.
+        """
+        try:
+            for stale in Path(app_directory).glob('*.old'):
+                try:
+                    stale.unlink()
+                    logger.info(f"Removed stale update file: {stale.name}")
+                except Exception as e:
+                    logger.debug(f"Could not remove stale file {stale.name}: {e}")
+        except Exception as e:
+            logger.debug(f"Stale-file cleanup skipped: {e}")
+
     def _rollback(self, backup_path: Path) -> bool:
         """Rollback to backup"""
         try:
