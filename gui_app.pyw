@@ -2665,79 +2665,136 @@ def main(db_available=None, db_error=None):
             
             tool_items.append(canvas.create_window(20, 100, window=theme_frame, anchor="w"))
 
-            start_y = 170
-            btn_gap_x = 125
-            btns_per_row = 5
+            # ================================================================
+            # Tool grid - card-based layout.
+            # Design principles applied from frontend practice:
+            #  - Design tokens: one small palette instead of scattered hex
+            #  - 8pt spacing rhythm for consistent gaps/padding
+            #  - Card containers per category + accent bar = clear hierarchy
+            #  - Uniform 3-column grid so columns actually align
+            #  - Full labels (no clipping) with hover affordance
+            # ================================================================
+            GUTTER = 20
+            CARD_W = current_width - (GUTTER * 2)   # full-width cards
+            COLS = 3
+            CARD_GAP = 12
+            CARD_BG = "#16181c"
+            CARD_BORDER = "#262b31"
+            BTN_BG = "#1c1f24"
+            BTN_HOVER = "#242a31"
+            TXT = "#e8eaed"
+
+            # Remove the large center shield watermark on the dense dashboard;
+            # the title bar already carries the brand. (Kept on the login screen.)
+            if bg_image_id is not None:
+                try:
+                    canvas.itemconfigure(bg_image_id, state="hidden")
+                except Exception:
+                    pass
+
+            # Shorter display labels for a few long names so nothing clips.
+            # The underlying tool_name (used for logic/help) is unchanged.
+            SHORT = {
+                "WiFi Traffic Analyzer": "WiFi Analyzer",
+                "Security Camera Finder": "Camera Finder",
+                "Packet Interceptor": "Packet Intercept",
+            }
+
+            def make_tool_button(parent, tool_name, tool_cmd):
+                display = SHORT.get(tool_name, tool_name)
+                btn = tk.Button(parent, text=display, bg=BTN_BG, fg=TXT,
+                                activebackground=BTN_HOVER, activeforeground=accent_color.get(),
+                                bd=0, relief="flat", font=("Segoe UI", 9), cursor="hand2",
+                                padx=8, pady=7, wraplength=150,
+                                highlightthickness=1, highlightbackground=CARD_BORDER,
+                                highlightcolor=CARD_BORDER)
+
+                def on_enter(e, name=tool_name):
+                    btn.config(bg=BTN_HOVER, fg=accent_color.get())
+                    canvas.itemconfig(status_text, text=tool_help.get(name, ""), fill=accent_color.get())
+
+                def on_leave(e):
+                    btn.config(bg=BTN_BG, fg=TXT)
+                    canvas.itemconfig(status_text, text="", fill=fg_color)
+
+                btn.bind("<Enter>", on_enter)
+                btn.bind("<Leave>", on_leave)
+
+                def on_tool_click(cmd=tool_cmd, name=tool_name):
+                    if name == "DDoS Tool":
+                        show_ddos_screen(scanner)
+                    else:
+                        cmd()
+                    canvas.itemconfig(status_text, text=tool_help.get(name, ""), fill="#aaaaaa")
+                    canvas.coords(status_text, 212, 20)
+
+                btn.configure(command=on_tool_click)
+                return btn
+
+            def build_grid(parent, tools):
+                grid = tk.Frame(parent, bg=CARD_BG)
+                for c in range(COLS):
+                    grid.grid_columnconfigure(c, weight=1, uniform="tools")
+                for idx, (tool_name, tool_cmd) in enumerate(tools):
+                    r, c = divmod(idx, COLS)
+                    make_tool_button(grid, tool_name, tool_cmd).grid(
+                        row=r, column=c, sticky="nsew", padx=4, pady=4)
+                return grid
+
+            def build_card(category, tools):
+                card = tk.Frame(root, bg=CARD_BG, highlightthickness=1,
+                                highlightbackground=CARD_BORDER, highlightcolor=CARD_BORDER)
+                inner = tk.Frame(card, bg=CARD_BG)
+                inner.pack(fill="both", expand=True, padx=12, pady=(10, 12))
+
+                header = tk.Frame(inner, bg=CARD_BG)
+                header.pack(fill="x", pady=(0, 8))
+                bar = tk.Frame(header, bg=accent_color.get(), width=3, height=14)
+                bar.pack(side="left", padx=(0, 8))
+                bar.pack_propagate(False)
+                lbl = tk.Label(header, text=category.upper(), font=("Segoe UI", 9, "bold"),
+                               bg=CARD_BG, fg=accent_color.get())
+                lbl.pack(side="left")
+
+                def on_h_enter(e, c=category):
+                    canvas.itemconfig(status_text, text=tool_descriptions.get(c, ""), fill=accent_color.get())
+
+                def on_h_leave(e):
+                    canvas.itemconfig(status_text, text="", fill=fg_color)
+
+                for w in (header, lbl, bar):
+                    w.bind("<Enter>", on_h_enter)
+                    w.bind("<Leave>", on_h_leave)
+
+                build_grid(inner, tools).pack(fill="x")
+                return card
+
+            start_y = 160
 
             if view_mode[0] == "Categorized":
-                cat_gap_y = 100
-                for i, (category, tools) in enumerate(tool_categories.items()):
-                    cat_y = start_y + (i * cat_gap_y)
-                    # Category Header with background
-                    cat_header_frame = tk.Frame(root, bg="#121212", padx=10)
-                    tk.Label(cat_header_frame, text=category.upper(), font=("Segoe UI", 8, "bold"), bg="#121212", fg="#00ff00").pack()
-                    cat_label = canvas.create_window(20, cat_y, window=cat_header_frame, anchor="w")
-                    tool_items.append(cat_label)
-                    
-                    # Category Tooltip
-                    cat_header_frame.bind("<Enter>", lambda e, c=category: canvas.itemconfig(status_text, text=tool_descriptions.get(c, ""), fill=accent_color.get()))
-                    cat_header_frame.bind("<Leave>", lambda e: canvas.itemconfig(status_text, text="", fill=fg_color))
-
-                    for j, (tool_name, tool_cmd) in enumerate(tools):
-                        row = j // btns_per_row
-                        col = j % btns_per_row
-                        btn_y = cat_y + 35 + (row * 35)
-                        
-                        btn = tk.Button(root, text=tool_name, bg="#1e1e1e", fg="#ffffff", 
-                                        activebackground="#333333", activeforeground=accent_color.get(), 
-                                        width=14, bd=0, font=("Segoe UI", 8), cursor="hand2")
-                        
-                        btn.bind("<Enter>", lambda e, name=tool_name: canvas.itemconfig(status_text, text=tool_help.get(name, ""), fill=accent_color.get()))
-                        btn.bind("<Leave>", lambda e: canvas.itemconfig(status_text, text="", fill=fg_color))
-
-                        def on_tool_click(cmd=tool_cmd, name=tool_name):
-                            if name == "DDoS Tool":
-                                show_ddos_screen(scanner)
-                                canvas.itemconfig(status_text, text=tool_help.get(name, ""), fill="#aaaaaa")
-                                canvas.coords(status_text, 212, 20)
-                            else:
-                                cmd()
-                                canvas.itemconfig(status_text, text=tool_help.get(name, ""), fill="#aaaaaa")
-                                canvas.coords(status_text, 212, 20)
-
-                        btn.configure(command=on_tool_click)
-                        tool_items.append(canvas.create_window(20 + (col * btn_gap_x), btn_y, window=btn, anchor="w"))
+                running_y = start_y
+                for category, tools in tool_categories.items():
+                    card = build_card(category, tools)
+                    win = canvas.create_window(GUTTER, running_y, window=card,
+                                               anchor="nw", width=CARD_W)
+                    tool_items.append(win)
+                    root.update_idletasks()
+                    bbox = canvas.bbox(win)
+                    running_y = (bbox[3] if bbox else running_y + 90) + CARD_GAP
             else:
-                # All Tools View
+                # All Tools View - single card, alphabetized
                 all_tools = []
                 for cat_tools in tool_categories.values():
                     all_tools.extend(cat_tools)
                 all_tools.sort(key=lambda x: x[0])
-                
-                for j, (tool_name, tool_cmd) in enumerate(all_tools):
-                    row = j // btns_per_row
-                    col = j % btns_per_row
-                    btn_y = start_y + (row * 35)
-                    
-                    btn = tk.Button(root, text=tool_name, bg="#1e1e1e", fg="#ffffff", 
-                                    activebackground="#333333", activeforeground=accent_color.get(), 
-                                    width=14, bd=0, font=("Segoe UI", 8), cursor="hand2")
-                    
-                    btn.bind("<Enter>", lambda e, name=tool_name: canvas.itemconfig(status_text, text=tool_help.get(name, ""), fill=accent_color.get()))
-                    btn.bind("<Leave>", lambda e: canvas.itemconfig(status_text, text="", fill=fg_color))
 
-                    def on_tool_click(cmd=tool_cmd, name=tool_name):
-                        if name == "DDoS Tool":
-                            show_ddos_screen(scanner)
-                            canvas.itemconfig(status_text, text=tool_help.get(name, ""), fill="#aaaaaa")
-                            canvas.coords(status_text, 212, 20)
-                        else:
-                            cmd()
-                            canvas.itemconfig(status_text, text=tool_help.get(name, ""), fill="#aaaaaa")
-                            canvas.coords(status_text, 212, 20)
-
-                    btn.configure(command=on_tool_click)
-                    tool_items.append(canvas.create_window(20 + (col * btn_gap_x), btn_y, window=btn, anchor="w"))
+                card = tk.Frame(root, bg=CARD_BG, highlightthickness=1,
+                                highlightbackground=CARD_BORDER, highlightcolor=CARD_BORDER)
+                inner = tk.Frame(card, bg=CARD_BG)
+                inner.pack(fill="both", expand=True, padx=12, pady=12)
+                build_grid(inner, all_tools).pack(fill="x")
+                tool_items.append(canvas.create_window(GUTTER, start_y, window=card,
+                                                       anchor="nw", width=CARD_W))
 
             root.update_idletasks()
             max_cat_y = 0
