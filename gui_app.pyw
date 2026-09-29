@@ -13,466 +13,6 @@ from secure_logger import get_logger
 # Set up secure logging
 logger = get_logger('application')
 
-class DebugLauncher:
-    def __init__(self):
-        try:
-            from modern_theme import ModernTheme
-            self.theme = ModernTheme
-        except ImportError:
-            # Fallback to default colors if modern_theme isn't available
-            class FallbackTheme:
-                COLORS = {
-                    'bg_primary': '#0f0f0f',
-                    'bg_secondary': '#1a1a1a',
-                    'bg_tertiary': '#242424',
-                    'accent_primary': '#00ff88',
-                    'fg_primary': '#e8e8e8',
-                    'fg_secondary': '#9ca3af',
-                    'fg_tertiary': '#6b7280',
-                    'warning': '#f59e0b',
-                    'error': '#ef4444',
-                    'success': '#10b981',
-                    'info': '#3b82f6',
-                    'border_light': '#2d2d2d',
-                    'bg_input': '#1e1e1e',
-                    'accent_hover': '#00cc6a'
-                }
-                FONTS = {
-                    'heading': ('Segoe UI', 18, 'bold'),
-                    'small': ('Segoe UI', 9),
-                    'body_bold': ('Segoe UI', 11, 'bold'),
-                    'tiny': ('Segoe UI', 8),
-                    'subheading': ('Segoe UI', 14, 'bold'),
-                    'info': ('Segoe UI', 11),
-                    'mono_small': ('Consolas', 9)
-                }
-            self.theme = FallbackTheme
-
-        self.root = tk.Tk()
-        self.root.title("Layer8 - Debug Launcher")
-        self.root.geometry("750x650")
-        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.root.configure(bg=self.theme.COLORS['bg_primary'])
-
-        # Make sure window stays on top and centered
-        self.root.update_idletasks()
-        x = (self.root.winfo_screenwidth() // 2) - 375
-        y = (self.root.winfo_screenheight() // 2) - 325
-        self.root.geometry(f'750x650+{x}+{y}')
-
-        # Title with modern design
-        tk.Label(
-            self.root,
-            text="LAYER8 SECURITY PLATFORM",
-            font=self.theme.FONTS['heading'],
-            bg=self.theme.COLORS['bg_secondary'],
-            fg=self.theme.COLORS['accent_primary'],
-            pady=20
-        ).pack(fill="x")
-
-        tk.Label(
-            self.root,
-            text="DIAGNOSTIC MODE",
-            font=self.theme.FONTS['small'],
-            bg=self.theme.COLORS['bg_secondary'],
-            fg=self.theme.COLORS['warning'],
-            pady=0
-        ).pack(fill="x", pady=(0, 10))
-        
-        # Status frame
-        status_frame = tk.Frame(self.root, bg=self.theme.COLORS['bg_primary'], pady=10)
-        status_frame.pack(fill="x", padx=24, pady=12)
-
-        tk.Label(
-            status_frame,
-            text="CURRENT STATUS:",
-            font=self.theme.FONTS['tiny'],
-            bg=self.theme.COLORS['bg_primary'],
-            fg=self.theme.COLORS['fg_secondary']
-        ).pack()
-
-        self.status_label = tk.Label(
-            status_frame,
-            text="Initializing Diagnostics...",
-            font=self.theme.FONTS['subheading'],
-            bg=self.theme.COLORS['bg_primary'],
-            fg=self.theme.COLORS['warning']
-        )
-        self.status_label.pack(pady=8)
-
-        # Progress
-        self.progress_label = tk.Label(
-            status_frame,
-            text="",
-            font=self.theme.FONTS['body_bold'],
-            bg=self.theme.COLORS['bg_primary'],
-            fg=self.theme.COLORS.get('info', '#3b82f6')
-        )
-        self.progress_label.pack()
-
-        # Log area
-        tk.Label(
-            self.root,
-            text="DIAGNOSTIC LOG:",
-            font=self.theme.FONTS['body_bold'],
-            bg=self.theme.COLORS['bg_primary'],
-            fg=self.theme.COLORS['fg_secondary']
-        ).pack(anchor="w", padx=24, pady=(12, 8))
-
-        self.log_text = scrolledtext.ScrolledText(
-            self.root,
-            height=22,
-            width=90,
-            font=self.theme.FONTS['mono_small'],
-            bg=self.theme.COLORS['bg_secondary'],
-            fg=self.theme.COLORS['accent_primary'],
-            padx=16,
-            pady=16,
-            borderwidth=0,
-            highlightthickness=1,
-            highlightbackground=self.theme.COLORS['border_light']
-        )
-        self.log_text.pack(padx=24, pady=8, fill="both", expand=True)
-        
-        # Button frame
-        btn_frame = tk.Frame(self.root, bg=self.theme.COLORS['bg_primary'])
-        btn_frame.pack(pady=20)
-        
-        self.continue_btn = tk.Button(
-            btn_frame,
-            text="LAUNCH ANYWAY",
-            command=self.launch_main_app,
-            bg="#27ae60",
-            fg="white",
-            activebackground="#2ecc71",
-            activeforeground="white",
-            state="disabled",
-            width=18,
-            font=("Segoe UI", 9, "bold"),
-            relief=tk.FLAT,
-            cursor="hand2"
-        )
-        self.continue_btn.pack(side="left", padx=10)
-        
-        self.skip_btn = tk.Button(
-            btn_frame,
-            text="SKIP DB TEST",
-            command=self.skip_db_test,
-            bg="#3498db",
-            fg="white",
-            activebackground="#2980b9",
-            activeforeground="white",
-            state="normal",
-            width=18,
-            font=("Segoe UI", 9, "bold"),
-            relief=tk.FLAT,
-            cursor="hand2"
-        )
-        self.skip_btn.pack(side="left", padx=10)
-        
-        self.exit_btn = tk.Button(
-            btn_frame,
-            text="EXIT",
-            command=self.on_close,
-            bg="#c0392b",
-            fg="white",
-            activebackground="#e74c3c",
-            activeforeground="white",
-            width=18,
-            font=("Segoe UI", 9, "bold"),
-            relief=tk.FLAT,
-            cursor="hand2"
-        )
-        self.exit_btn.pack(side="left", padx=10)
-        
-        # State
-        self.db_available = False
-        self.db_error = None
-        self.app_launched = False
-        self.diagnostics_complete = False
-        
-        # Auto-start diagnostics after a brief delay
-        self.root.after(500, self.start_diagnostics_thread)
-    
-    def _mask(self, value):
-        """Mask sensitive information for display"""
-        if not value or value == 'NOT SET':
-            return 'NOT SET'
-        s = str(value)
-        if len(s) <= 4:
-            return "*" * len(s)
-        # For IPs
-        if "." in s and s.replace(".", "").isdigit():
-            parts = s.split(".")
-            if len(parts) == 4:
-                return f"{parts[0]}.{parts[1]}.xx.xxx"
-        # General mask
-        return s[:3] + "..." + s[-3:]
-    
-    def log(self, message, level="INFO"):
-        """Add message to log with timestamp"""
-        def _do_log():
-            timestamp = time.strftime("%H:%M:%S")
-            self.log_text.insert(tk.END, f"[{timestamp}] [{level}] {message}\n")
-            self.log_text.see(tk.END)
-        self.root.after(0, _do_log)
-    
-    def update_status(self, status, progress="", color=None):
-        """Update status labels safely"""
-        if color is None:
-            color = self.theme.COLORS.get('error', '#ef4444')
-        def _do_update():
-            self.status_label.config(text=status, fg=color)
-            self.progress_label.config(text=progress)
-        self.root.after(0, _do_update)
-    
-    def start_diagnostics_thread(self):
-        """Start diagnostics in background thread to avoid blocking GUI"""
-        self.log("Starting diagnostics in background...", "INFO")
-        thread = threading.Thread(target=self.run_diagnostics, daemon=True)
-        thread.start()
-    
-    def skip_db_test(self):
-        """Skip database test and launch immediately"""
-        self.log("\n[USER ACTION] Skipping database diagnostics...", "WARN")
-        self.update_status("⚠️ Launching without DB test", "", self.theme.COLORS['warning'])
-        self.continue_btn.config(state="disabled")
-        self.skip_btn.config(state="disabled")
-        self.root.after(1000, self.launch_main_app)
-    
-    def run_diagnostics(self):
-        """Run diagnostics in background thread"""
-        try:
-            self.log("="*70, "INFO")
-            self.log("LAYER8 SECURITY PLATFORM - DIAGNOSTIC MODE", "INFO")
-            self.log("="*70, "INFO")
-            
-            # Step 1: Environment check
-            self.update_status("Checking environment...", "Step 1/4", self.theme.COLORS['info'])
-            self.log("\n[STEP 1] Checking environment variables...", "INFO")
-            
-            try:
-                from dotenv import load_dotenv
-                load_dotenv()
-                self.log("✓ Successfully loaded .env file", "SUCCESS")
-                
-                # Check key variables
-                db_host = os.getenv('L8_DB_HOST', 'NOT SET')
-                db_user = os.getenv('MYSQL_USER', 'NOT SET')
-                db_name = os.getenv('L8_DB_NAME', 'NOT SET')
-                
-                self.log(f"  L8_DB_HOST: {self._mask(db_host)}", "INFO")
-                self.log(f"  MYSQL_USER: {self._mask(db_user)}", "INFO")
-                self.log(f"  L8_DB_NAME: {self._mask(db_name)}", "INFO")
-                
-            except Exception as e:
-                self.log(f"✗ Failed to load .env: {e}", "WARN")
-            
-            # Step 2: Import check
-            self.update_status("Checking imports...", "Step 2/4", self.theme.COLORS['info'])
-            self.log("\n[STEP 2] Checking required modules...", "INFO")
-            
-            missing_modules = []
-            
-            try:
-                import pymysql
-                self.log("✓ pymysql is installed", "SUCCESS")
-            except ImportError:
-                self.log("✗ pymysql NOT installed!", "ERROR")
-                missing_modules.append("pymysql")
-            
-            try:
-                import nacl.secret
-                self.log("✓ PyNaCl is installed", "SUCCESS")
-            except ImportError:
-                self.log("✗ PyNaCl NOT installed (encryption disabled)", "WARN")
-                missing_modules.append("PyNaCl")
-            
-            try:
-                from Crypto.Cipher import AES
-                self.log("✓ pycryptodome is installed", "SUCCESS")
-            except ImportError:
-                self.log("✗ pycryptodome NOT installed (encryption disabled)", "WARN")
-                missing_modules.append("pycryptodome")
-            
-            try:
-                from argon2 import PasswordHasher
-                self.log("✓ argon2-cffi is installed", "SUCCESS")
-            except ImportError:
-                self.log("✗ argon2-cffi NOT installed (password hashing disabled)", "WARN")
-                missing_modules.append("argon2-cffi")
-            
-            if missing_modules:
-                self.log(f"\n⚠️  Missing modules: {', '.join(missing_modules)}", "WARN")
-                self.log("  Run: pip install " + " ".join(missing_modules), "WARN")
-            
-            try:
-                from db_connection import DatabaseConnection
-                self.log("✓ db_connection.py found and importable", "SUCCESS")
-            except ImportError as e:
-                self.log(f"✗ Cannot import db_connection.py: {e}", "ERROR")
-                self.finish_diagnostics(False, "Missing db_connection.py - launching in offline mode")
-                return
-            
-            # Step 3: Network test (with timeout)
-            self.update_status("Testing network...", "Step 3/4", self.theme.COLORS['info'])
-            self.log("\n[STEP 3] Testing network connectivity...", "INFO")
-            
-            db_host = os.getenv('L8_DB_HOST')
-            db_port = int(os.getenv('L8_DB_PORT', '3306'))
-            
-            # If not in env, try to get from secure config
-            if not db_host:
-                try:
-                    from secure_config import SecureConfig
-                    sc = SecureConfig()
-                    if sc.is_configured():
-                        # Try loading from keyring (no master password needed for P1)
-                        creds = sc.load_credentials()
-                        db_host = creds.get('db_host')
-                        db_port = int(creds.get('db_port', 3306))
-                except:
-                    pass
-
-            if not db_host:
-                self.log("✗ Database host not configured. Skipping network probe.", "WARN")
-                network_ok = True # Proceed to Step 4 where Wizard handles setup
-            else:
-                self.log(f"Attempting to reach {self._mask(db_host)}:{db_port}...", "INFO")
-                
-                import socket
-                try:
-                    sock = socket.create_connection((db_host, db_port), timeout=5)
-                    sock.close()
-                    self.log(f"✓ Network connection to {self._mask(db_host)}:{db_port} successful!", "SUCCESS")
-                    network_ok = True
-                except socket.timeout:
-                    self.log(f"✗ TIMEOUT: Server at {self._mask(db_host)}:{db_port} not responding", "ERROR")
-                    self.log("  Possible causes:", "WARN")
-                    self.log("    - Remote MySQL not enabled in Hostinger", "WARN")
-                    self.log("    - Your IP not whitelisted", "WARN")
-                    self.log("    - Firewall blocking port 3306", "WARN")
-                except Exception as e:
-                    self.log(f"✗ Network error: {e}", "ERROR")
-            
-            if not network_ok:
-                self.finish_diagnostics(False, "Network unreachable - launching in offline mode")
-                return
-            
-            # Step 4: Database connection (with timeout)
-            self.update_status("Testing database...", "Step 4/4", self.theme.COLORS['info'])
-            self.log("\n[STEP 4] Testing MySQL connection (10 second timeout)...", "INFO")
-            
-            db_success = [False]
-            db_error = [None]
-            
-            def test_db():
-                try:
-                    db = DatabaseConnection()
-                    self.log(f"Connecting to MySQL...", "INFO")
-                    self.log(f"  Host: {self._mask(db.host)}", "INFO")
-                    self.log(f"  Port: {db.port}", "INFO")
-                    self.log(f"  Database: {self._mask(db.database)}", "INFO")
-                    self.log(f"  User: {self._mask(db.user)}", "INFO")
-                    
-                    success, error = db.connect()
-                    
-                    if success:
-                        db_success[0] = True
-                        self.log("✓ MySQL connection successful!", "SUCCESS")
-                        
-                        # Test table
-                        self.log("Checking for user_logins table...", "INFO")
-                        table_success, table_msg = db.ensure_table_exists()
-                        self.log(f"  {table_msg}", "SUCCESS" if table_success else "WARN")
-                        
-                        db.close()
-                    else:
-                        db_error[0] = error
-                        self.log(f"✗ MySQL connection failed: {error}", "ERROR")
-                        
-                except Exception as e:
-                    db_error[0] = str(e)
-                    self.log(f"✗ Exception during database test: {e}", "ERROR")
-            
-            # Run with timeout
-            db_thread = threading.Thread(target=test_db, daemon=True)
-            db_thread.start()
-            db_thread.join(timeout=10)
-            
-            if db_thread.is_alive():
-                self.log("✗ Database connection TIMEOUT (10 seconds)", "ERROR")
-                self.finish_diagnostics(False, "Database timeout - launching in offline mode")
-                return
-            
-            if db_success[0]:
-                self.finish_diagnostics(True, None)
-            else:
-                self.finish_diagnostics(False, db_error[0] or "Unknown database error")
-        
-        except Exception as e:
-            self.log(f"✗ Diagnostic error: {e}", "ERROR")
-            import traceback
-            self.log(traceback.format_exc(), "ERROR")
-            self.finish_diagnostics(False, "Diagnostic error - launching in offline mode")
-    
-    def finish_diagnostics(self, success, error):
-        """Finish diagnostic process safely on main thread"""
-        def _do_finish():
-            self.diagnostics_complete = True
-            self.db_available = success
-            self.db_error = error
-            
-            self.log("\n" + "="*70, "INFO")
-            
-            if success:
-                self.log("DIAGNOSTICS COMPLETE - ALL TESTS PASSED!", "SUCCESS")
-                self.log("="*70, "INFO")
-                self.update_status("✓ Ready to launch", "All systems operational", self.theme.COLORS['success'])
-                
-                self.log("\nLaunching main application in 2 seconds...", "INFO")
-                self.continue_btn.config(state="normal", text="Launch Now", bg="#27ae60")
-                self.skip_btn.config(state="disabled")
-                self.root.after(2000, self.launch_main_app)
-            else:
-                self.log("DIAGNOSTICS COMPLETE - DATABASE UNAVAILABLE", "WARN")
-                self.log("="*70, "INFO")
-                if error:
-                    self.log(f"\nReason: {error}", "WARN")
-                self.update_status("⚠️ Database offline", "Can launch without DB", self.theme.COLORS['warning'])
-                
-                # Enable launch button
-                self.continue_btn.config(state="normal", text="Launch Anyway", bg="#27ae60")
-                self.skip_btn.config(state="disabled")
-                
-                self.log("\n✓ You can still use the application in offline mode", "INFO")
-                self.log("  Click 'Launch Anyway' to continue", "INFO")
-        
-        self.root.after(0, _do_finish)
-    
-    def launch_main_app(self):
-        """Signal that we are ready to launch the main application"""
-        if self.app_launched:
-            return
-        
-        self.app_launched = True
-        self.root.destroy()
-    
-    def on_close(self):
-        """Handle window close"""
-        if self.app_launched:
-            return # Let the main app handle it
-        
-        if messagebox.askyesno("Exit", "Are you sure you want to exit?"):
-            self.log("\n[USER ACTION] Exiting application...", "INFO")
-            self.root.destroy()
-            sys.exit(0)
-    
-    def run(self):
-        """Run the launcher and return results"""
-        self.root.mainloop()
-        return self.db_available, self.db_error
-
 class LoginWindow:
     """Login window with proper error handling"""
     
@@ -530,9 +70,9 @@ class LoginWindow:
 
         subtitle_label = ModernLabel(
             main_container,
-            text="ENTERPRISE SECURITY PLATFORM" if self.db_available else "OFFLINE DIAGNOSTIC MODE",
+            text="ENTERPRISE SECURITY PLATFORM",
             variant="small",
-            fg=ModernTheme.COLORS['fg_tertiary'] if self.db_available else ModernTheme.COLORS['warning']
+            fg=ModernTheme.COLORS['fg_tertiary']
         )
         subtitle_label.pack(pady=(0, 30))
 
@@ -544,94 +84,59 @@ class LoginWindow:
         inner_frame = tk.Frame(login_frame, bg=ModernTheme.COLORS['bg_secondary'])
         inner_frame.pack(fill=tk.BOTH, expand=True, padx=ModernTheme.SPACING['xl'], pady=ModernTheme.SPACING['xl'])
         
-        # Username field
+        # Email field (verified against the website access console)
         ModernLabel(
             inner_frame,
-            text="USERNAME",
+            text="EMAIL",
             variant="tiny",
             fg=ModernTheme.COLORS['fg_secondary']
         ).pack(anchor="w", pady=(0, 8))
 
         self.username_entry = ModernEntry(
             inner_frame,
-            placeholder="Enter your username",
-            width=35,
-            state=tk.NORMAL if self.db_available else tk.DISABLED
+            placeholder="Enter your email",
+            width=35
         )
         self.username_entry.pack(fill='x', ipady=12, pady=(0, 24))
-        if self.db_available:
-            self.username_entry.focus()
+        self.username_entry.focus()
 
-        # Password field
+        # Access key field (the key issued by the website console)
         ModernLabel(
             inner_frame,
-            text="PASSWORD",
+            text="ACCESS KEY",
             variant="tiny",
             fg=ModernTheme.COLORS['fg_secondary']
         ).pack(anchor="w", pady=(0, 8))
 
         self.password_entry = ModernEntry(
             inner_frame,
-            placeholder="Enter your password",
+            placeholder="XXXXX-XXXXX-XXXXX-XXXXX",
             show="*",
-            width=35,
-            state=tk.NORMAL if self.db_available else tk.DISABLED
+            width=35
         )
         self.password_entry.pack(fill='x', ipady=12, pady=(0, 16))
 
         # Status label
         self.status_label = ModernLabel(
             inner_frame,
-            text="" if self.db_available else "⚠️ DATABASE OFFLINE",
+            text="",
             variant="small",
-            fg=ModernTheme.COLORS['error'] if not self.db_available else ModernTheme.COLORS['fg_tertiary']
+            fg=ModernTheme.COLORS['fg_tertiary']
         )
         self.status_label.pack(pady=(0, 20))
 
         # Login button with modern styling
         self.login_button = ModernButton(
             inner_frame,
-            text="SIGN IN" if self.db_available else "OFFLINE MODE",
+            text="SIGN IN",
             variant="primary",
-            command=self.attempt_login,
-            state=tk.NORMAL if self.db_available else tk.DISABLED
+            command=self.attempt_login
         )
         self.login_button.pack(fill='x', ipady=6, pady=(0, 16))
-        
-        # Footer buttons frame
-        footer_frame = tk.Frame(inner_frame, bg=ModernTheme.COLORS['bg_secondary'])
-        footer_frame.pack(fill="x", pady=(8, 0))
 
-        # Test connection button
-        test_button = ModernButton(
-            footer_frame,
-            text="Test Connection",
-            variant="ghost",
-            command=self.test_database
-        )
-        test_button.config(font=ModernTheme.FONTS['small'], padx=8, pady=4)
-        test_button.pack(side="left")
-
-        # Bypass for offline
-        if not self.db_available:
-            bypass_btn = ModernButton(
-                footer_frame,
-                text="Bypass Login",
-                variant="ghost",
-                command=lambda: self.on_success_callback(False, "OfflineUser")
-            )
-            bypass_btn.config(
-                font=ModernTheme.FONTS['small'],
-                fg=ModernTheme.COLORS['warning'],
-                padx=8,
-                pady=4
-            )
-            bypass_btn.pack(side="right")
-        
         # Bind Enter key
-        if self.db_available:
-            self.username_entry.bind('<Return>', lambda e: self.attempt_login())
-            self.password_entry.bind('<Return>', lambda e: self.attempt_login())
+        self.username_entry.bind('<Return>', lambda e: self.attempt_login())
+        self.password_entry.bind('<Return>', lambda e: self.attempt_login())
         
         # Handle window close
         self.window.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -674,9 +179,9 @@ class LoginWindow:
             return
         
         # Disable button during login
-        self.login_button.config(state=tk.DISABLED, text="Logging in...")
+        self.login_button.config(state=tk.DISABLED, text="Signing in...")
         from modern_theme import ModernTheme
-        self.update_status("Connecting to database...", ModernTheme.COLORS['info'])
+        self.update_status("Verifying access...", ModernTheme.COLORS['info'])
         
         # Run login in separate thread to prevent GUI freeze
         threading.Thread(
@@ -686,50 +191,42 @@ class LoginWindow:
         ).start()
     
     def _perform_login(self, username, password):
-        """Perform actual login in background thread"""
+        """Verify the person against the website access console.
+
+        The username field is their EMAIL and the password field is their ACCESS
+        KEY, both issued/controlled from the web admin console. The website is
+        the source of truth: suspend / revoke / expire / seat limits / version
+        floor / maintenance all take effect here at sign-in.
+        """
+        email = (username or "").strip().lower()
+        access_key = (password or "").strip()
         try:
-            logger.info(f"Login attempt {self.login_attempts} for user: {username}")
-            
-            # Create database connection
-            from db_connection import DatabaseConnection
-            self.db = DatabaseConnection()
-            
-            # Connect to database
-            success, error = self.db.connect()
-            
-            if not success:
-                logger.error(f"Database connection failed: {error}")
-                self.window.after(0, lambda: self._login_failed(
-                    f"Database connection failed:\n\n{error}"
-                ))
-                return
-            
-            logger.info("Database connected, verifying credentials...")
-            
-            # Verify credentials
-            success, result = self.db.verify_login(username, password)
-            
-            if success:
-                logger.info(f"Login successful for {username}")
-                user_data = result
-                
-                # Close connection
-                self.db.close()
-                
-                # Call success callback on main thread
+            logger.info(f"Access sign-in attempt {self.login_attempts} for {email}")
+
+            import access_client
+            result = access_client.check_access(email, access_key)
+
+            if result.get('allowed'):
+                logger.info(f"Access granted for {email} "
+                            f"(reason={result.get('reason')}, offline={result.get('offline')})")
+                # The website 'plan' decides in-app admin rights: an 'admin' or
+                # 'owner' plan unlocks the app's admin features.
+                is_admin = str(result.get('plan', '')).lower() in ('admin', 'owner')
+                user_data = {
+                    'username': result.get('name') or email,
+                    'email': email,
+                    'is_admin': is_admin,
+                    'plan': result.get('plan', ''),
+                }
                 self.window.after(0, lambda: self._login_success(user_data))
             else:
-                logger.warning(f"Login failed for {username}: {result}")
-                self.db.close()
-                
-                # Show error on main thread
-                self.window.after(0, lambda: self._login_failed(result))
-        
+                logger.warning(f"Access denied for {email}: {result.get('reason')}")
+                self.window.after(0, lambda: self._login_failed(
+                    result.get('message') or 'Access denied.'))
+
         except Exception as e:
-            error_msg = f"Unexpected error during login: {str(e)}"
+            error_msg = f"Unexpected error during sign-in: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            
-            # Show error on main thread
             self.window.after(0, lambda: self._login_failed(error_msg))
     
     def _login_success(self, user_data):
@@ -774,43 +271,6 @@ class LoginWindow:
         except Exception as e:
             logger.error(f"Error in login failure handler: {e}", exc_info=True)
     
-    def test_database(self):
-        """Test database connection"""
-        from modern_theme import ModernTheme
-        self.update_status("Testing database connection...", ModernTheme.COLORS['info'])
-        self.login_button.config(state=tk.DISABLED)
-
-        threading.Thread(target=self._perform_test, daemon=True).start()
-    
-    def _perform_test(self):
-        """Perform database test in background"""
-        try:
-            from db_connection import DatabaseConnection
-            db = DatabaseConnection()
-            success, message = db.test_connection()
-            db.close()
-            
-            if success:
-                self.window.after(0, lambda: self._show_test_result(True, message))
-            else:
-                self.window.after(0, lambda: self._show_test_result(False, message))
-        
-        except Exception as e:
-            error_msg = f"Test failed: {str(e)}"
-            self.window.after(0, lambda: self._show_test_result(False, error_msg))
-    
-    def _show_test_result(self, success, message):
-        """Show test results"""
-        from modern_theme import ModernTheme
-        self.login_button.config(state=tk.NORMAL)
-
-        if success:
-            self.update_status("Connection successful!", ModernTheme.COLORS['success'])
-            messagebox.showinfo("Success", f"✅ {message}\n\nDefault credentials:\nUsername: Layer8Wes\nPassword: Valorant123!")
-        else:
-            self.update_status("Connection failed", ModernTheme.COLORS['error'])
-            messagebox.showerror("Connection Failed", f"❌ {message}\n\nCheck gui_app.log for details")
-    
     def on_close(self):
         """Handle window close"""
         result = messagebox.askyesno(
@@ -830,42 +290,13 @@ def get_resource_path(relative_path):
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
-def get_db_path():
-    db_name = "db.sqlite3"
-    if getattr(sys, 'frozen', False):
-        # The application is bundled by PyInstaller
-        exe_dir = os.path.dirname(sys.executable)
-        local_db = os.path.join(exe_dir, db_name)
-        
-        # If the database doesn't exist next to the exe, copy it from the bundle
-        if not os.path.exists(local_db):
-            try:
-                bundled_db = os.path.join(sys._MEIPASS, db_name)
-                if os.path.exists(bundled_db):
-                    shutil.copy2(bundled_db, local_db)
-            except:
-                pass
-        return local_db
-    else:
-        # The application is running in a normal Python environment
-        return os.path.join(os.path.dirname(os.path.abspath(__file__)), db_name)
-
 
 def main(db_available=None, db_error=None):
-    # If not provided, run the diagnostic launcher
-    if db_available is None:
-        launcher = DebugLauncher()
-        db_available, db_error = launcher.run()
-        # If the launcher was closed without triggering a launch, exit
-        if not getattr(launcher, 'app_launched', False):
-            return
-        
-    # Structured logging already setup via secure_logger.py
-    logger.info("Main application starting", context={'db_available': db_available})
+    # Access is verified against the website console at sign-in; there is no
+    # local database to set up, so the app launches straight to the login.
+    db_available = True
 
-    # Database path (SQLite fallback check)
-    db_path = get_db_path()
-    logger.info("Local database setup", context={'db_path': db_path})
+    logger.info("Main application starting")
 
     root = tk.Tk()
     logger.info("Tkinter root created.")
@@ -885,12 +316,12 @@ def main(db_available=None, db_error=None):
     # ADD UPDATER (this creates Help menu with "Check for Updates")
     from updater_gui import add_updater_to_gui
 
-    current_version = "1.2.7"  # UPDATE THIS FOR EACH RELEASE
+    current_version = "1.4.2"  # UPDATE THIS FOR EACH RELEASE
     updater_gui = add_updater_to_gui(
         root=root,
         menu_bar=menu_bar,
         current_version=current_version,
-        update_url="https://api.github.com/repos/Wesley-Hatch/layer8-gui/releases/latest"  # UPDATE YOUR_USERNAME
+        update_url="https://api.github.com/repos/Wesley-Hatch/Layer8-GUI/releases/latest"
     )
 
     # Check for updates in background (silent check on startup)
@@ -1195,147 +626,32 @@ def main(db_available=None, db_error=None):
 
         def show_admin_panel():
             clear_canvas()
-            admin_title_id = canvas.create_text(212, 40, text="Admin Panel - User Management", fill=fg_color, font=("Arial", 14, "bold"), anchor="center")
-            
+            admin_title_id = canvas.create_text(212, 40, text="Admin Panel", fill=fg_color, font=("Arial", 14, "bold"), anchor="center")
+
             # Back to Main Menu
             back_btn = tk.Button(root, text="Back", bg="#444444", fg=fg_color, bd=0, command=lambda: show_main_menu(username, is_admin, db_available))
             canvas.create_window(20, 40, window=back_btn, anchor="w")
 
-            # List users
-            canvas.create_text(20, 80, text="Current Users:", fill=fg_color, font=("Arial", 10, "bold"), anchor="w")
-            
-            user_list_frame = tk.Frame(root, bg="#1e1e1e")
-            user_list_id = canvas.create_window(212, 180, window=user_list_frame, anchor="center")
-            
-            user_list_box = tk.Text(user_list_frame, bg="#1e1e1e", fg=fg_color, font=("Consolas", 9), bd=0, height=10, width=50, padx=10, pady=5, highlightthickness=0, wrap="none")
-            
-            ul_vscroll = tk.Scrollbar(user_list_frame, command=user_list_box.yview)
-            ul_vscroll.pack(side="right", fill="y")
-            ul_hscroll = tk.Scrollbar(user_list_frame, orient="horizontal", command=user_list_box.xview)
-            ul_hscroll.pack(side="bottom", fill="x")
-            
-            user_list_box.pack(side="left", fill="both", expand=True)
-            user_list_box.config(yscrollcommand=ul_vscroll.set, xscrollcommand=ul_hscroll.set)
-            
-            try:
-                from db_connection import DatabaseConnection
-                # Use DatabaseConnection module
-                db = DatabaseConnection()
-                success, error = db.connect()
-                if success:
-                    # Read whichever accounts table exists, mirroring db_connection's
-                    # login order: PHP 'users' (role-based) first, then the Python
-                    # 'user_logins' (is_admin) table. pymysql is already a DictCursor.
-                    users = []
-                    source_table = None
+            admin_info = (
+                "User accounts are managed in the\n"
+                "Layer8 web console.\n\n"
+                "Create, suspend, revoke or expire users,\n"
+                "assign plans and manage device seats there.\n"
+                "Changes take effect the next time a\n"
+                "user signs in to this app."
+            )
+            info_id = canvas.create_text(
+                212, 200, text=admin_info,
+                fill=fg_color, font=("Segoe UI", 11), anchor="center", justify="center")
 
-                    # 1) PHP 'users' table: username, email, role
-                    try:
-                        cursor = db.connection.cursor()
-                        cursor.execute("SELECT username, email, role FROM users")
-                        rows = cursor.fetchall() or []
-                        cursor.close()
-                        if rows:
-                            source_table = "users"
-                            for r in rows:
-                                role = str(r.get('role', '') or '').lower()
-                                users.append({
-                                    'username': r.get('username', 'N/A'),
-                                    'email': r.get('email', 'N/A'),
-                                    'is_admin': role in ('admin', 'superadmin', 'staff'),
-                                })
-                    except Exception:
-                        pass
+            def _open_console():
+                import webbrowser
+                webbrowser.open("https://hatchtag.dev/access/")
 
-                    # 2) Fallback: Python 'user_logins' table: username, email, is_admin
-                    if not users:
-                        try:
-                            cursor = db.connection.cursor()
-                            cursor.execute("SELECT username, email, is_admin FROM user_logins")
-                            rows = cursor.fetchall() or []
-                            cursor.close()
-                            if rows:
-                                source_table = "user_logins"
-                                for r in rows:
-                                    users.append({
-                                        'username': r.get('username', 'N/A'),
-                                        'email': r.get('email', 'N/A'),
-                                        'is_admin': bool(r.get('is_admin', 0)),
-                                    })
-                        except Exception:
-                            pass
+            open_btn = tk.Button(root, text="Open Web Console", bg="#226622", fg=fg_color, bd=0, width=20, command=_open_console)
+            open_btn_id = canvas.create_window(212, 330, window=open_btn, anchor="center")
 
-                    db.close()
-
-                    user_list_box.config(state="normal")
-                    header = f"{'Username':<15} {'Email':<20} {'Admin':<5}"
-                    if source_table:
-                        header += f"   (from '{source_table}')"
-                    user_list_box.insert("1.0", header + "\n")
-                    user_list_box.insert("2.0", "-" * 60 + "\n")
-                    if users:
-                        for u in users:
-                            user_list_box.insert(tk.END, f"{u['username']:<15} {u['email']:<20} {str(bool(u['is_admin'])):<5}\n")
-                    else:
-                        user_list_box.insert(tk.END, "(No accounts found in 'users' or 'user_logins'.)\n")
-                    user_list_box.config(state="disabled")
-                else:
-                    messagebox.showerror("Error", "Failed to connect to MySQL database.")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to fetch users: {e}")
-
-            # Account Creation
-            canvas.create_text(20, 280, text="Create New Account:", fill=fg_color, font=("Arial", 10, "bold"), anchor="w")
-            
-            canvas.create_text(20, 310, text="Username:", fill=fg_color, font=("Arial", 9), anchor="w")
-            new_user_entry = tk.Entry(root, bg="#444444", fg=fg_color, bd=0, width=20)
-            canvas.create_window(100, 310, window=new_user_entry, anchor="w")
-
-            canvas.create_text(20, 340, text="Email:", fill=fg_color, font=("Arial", 9), anchor="w")
-            new_email_entry = tk.Entry(root, bg="#444444", fg=fg_color, bd=0, width=20)
-            canvas.create_window(100, 340, window=new_email_entry, anchor="w")
-
-            canvas.create_text(20, 370, text="Password:", fill=fg_color, font=("Arial", 9), anchor="w")
-            new_pass_entry = tk.Entry(root, bg="#444444", fg=fg_color, bd=0, width=20)
-            canvas.create_window(100, 370, window=new_pass_entry, anchor="w")
-
-            is_admin_var = tk.BooleanVar()
-            admin_cb = tk.Checkbutton(root, text="Admin", variable=is_admin_var, bg=bg_color.get(), fg=fg_color, selectcolor="#1e1e1e", activebackground=bg_color.get(), activeforeground=fg_color)
-            canvas.create_window(250, 340, window=admin_cb, anchor="w")
-
-            def create_account(event=None):
-                u = new_user_entry.get().strip()
-                e = new_email_entry.get().strip()
-                p = new_pass_entry.get().strip()
-                adm = 1 if is_admin_var.get() else 0
-                
-                if not u or not p:
-                    messagebox.showwarning("Input Error", "Username and Password are required.")
-                    return
-                
-                try:
-                    from db_connection import DatabaseConnection
-                    # Use DatabaseConnection module
-                    db = DatabaseConnection()
-                    success, message = db.create_user(u, p, e, bool(adm))
-                    if success:
-                        db.close()
-                        messagebox.showinfo("Success", message)
-                        show_admin_panel() # Refresh
-                    else:
-                        messagebox.showerror("Database Error", message)
-                except Exception as err:
-                    messagebox.showerror("Database Error", f"Error: {err}")
-
-            # Bind Enter key to create account
-            new_user_entry.bind("<Return>", create_account)
-            new_email_entry.bind("<Return>", create_account)
-            new_pass_entry.bind("<Return>", create_account)
-
-            create_btn = tk.Button(root, text="Create User", bg="#226622", fg=fg_color, bd=0, width=15, command=create_account)
-            create_btn_id = canvas.create_window(212, 420, window=create_btn, anchor="center")
-
-            update_window_size(width=650, target_height=750, centered_items=[admin_title_id, user_list_id, create_btn_id])
+            update_window_size(width=650, target_height=750, centered_items=[admin_title_id, info_id, open_btn_id])
 
         # Welcome Message
         welcome_id = canvas.create_text(212, 40, text=f"WELCOME, {username.upper()}", fill="#00ff00", font=("Segoe UI", 16, "bold"), anchor="center")

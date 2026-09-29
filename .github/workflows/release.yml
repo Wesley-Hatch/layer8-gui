@@ -3,477 +3,61 @@ name: Build and Release Layer8 GUI
 on:
   push:
     tags:
-      - 'v*.*.*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
+      - 'v*.*.*'   # e.g. v1.4.2 - pushing a version tag builds and publishes a release
+  workflow_dispatch: {}   # allow manual runs from the Actions tab
 
-# Add permissions for GITHUB_TOKEN
 permissions:
   contents: write
-  packages: write
 
 jobs:
   build-windows:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
 
-    - name: Create .env with actual credentials
-      run: |
-        @"
-        L8_DB_HOST=${{ secrets.L8_DB_HOST }}
-        L8_DB_PORT=${{ secrets.L8_DB_PORT }}
-        L8_DB_NAME=${{ secrets.L8_DB_NAME }}
-        L8_DB_USER=${{ secrets.L8_DB_USER }}
-        L8_DB_PASS=${{ secrets.L8_DB_PASS }}
-        MYSQL_HOST=${{ secrets.L8_DB_HOST }}
-        MYSQL_PORT=${{ secrets.L8_DB_PORT }}
-        MYSQL_DATABASE=${{ secrets.L8_DB_NAME }}
-        MYSQL_USER=${{ secrets.L8_DB_USER }}
-        MYSQL_PASSWORD=${{ secrets.L8_DB_PASS }}
-        L8_DB_DIALECT=mysql
-        L8_PEPPER=${{ secrets.L8_PEPPER }}
-        L8_PWD_KEY_B64=${{ secrets.L8_PWD_KEY_B64 }}
-        L8_PWD_KEY_ID=k1
-        L8_ARGON_MEMORY_COST=131072
-        L8_ARGON_TIME_COST=3
-        L8_ARGON_THREADS=2
-        L8_SESSION_NAME=layer8_admin
-        L8_SESSION_SECURE=true
-        L8_SESSION_SAMESITE=Lax
-        L8_MAX_FAILED_ATTEMPTS=5
-        L8_LOCKOUT_WINDOW_MIN=15
-        ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
-        CLAUDE_API_KEY=${{ secrets.CLAUDE_API_KEY }}
-        "@ | Out-File -FilePath .env -Encoding utf8
+      - name: Build executable
+        env:
+          L8_VERSION: ${{ github.ref_name }}
+        run: python build.py
 
-    - name: Build executable with PyInstaller
-      run: |
-        pyinstaller --name "Layer8-GUI" `
-          --onefile `
-          --windowed `
-          --icon="Layer8/Media/Layer8-logo.ico" `
-          --add-data "Layer8;Layer8" `
-          --add-data ".env;." `
-          --add-data "modern_theme.py;." `
-          --add-data "db_connection.py;." `
-          --add-data "config.py;." `
-          --add-data "scanner_tools.py;." `
-          --add-data "ai_analyzer.py;." `
-          --add-data "updater.py;." `
-          --add-data "updater_gui.py;." `
-          --hidden-import=tkinter `
-          --hidden-import=tkinter.ttk `
-          --hidden-import=tkinter.font `
-          --hidden-import=tkinter.scrolledtext `
-          --hidden-import=tkinter.messagebox `
-          --hidden-import=tkinter.filedialog `
-          --hidden-import=PIL `
-          --hidden-import=PIL.Image `
-          --hidden-import=PIL.ImageTk `
-          --hidden-import=PIL._imaging `
-          --hidden-import=pymysql `
-          --hidden-import=pymysql.cursors `
-          --hidden-import=pymysql.constants `
-          --hidden-import=pymysql.converters `
-          --hidden-import=sqlite3 `
-          --hidden-import=nacl `
-          --hidden-import=nacl.secret `
-          --hidden-import=nacl.utils `
-          --hidden-import=nacl.encoding `
-          --hidden-import=argon2 `
-          --hidden-import=argon2.low_level `
-          --hidden-import=argon2.exceptions `
-          --hidden-import=Crypto `
-          --hidden-import=Crypto.Cipher `
-          --hidden-import=Crypto.Cipher.AES `
-          --hidden-import=Crypto.Random `
-          --hidden-import=keyring `
-          --collect-submodules=keyring `
-          --collect-submodules=cryptography `
-          --hidden-import=dotenv `
-          --hidden-import=scapy `
-          --hidden-import=scapy.all `
-          --hidden-import=scapy.layers.inet `
-          --hidden-import=scapy.layers.dns `
-          --hidden-import=scapy.layers.l2 `
-          --hidden-import=requests `
-          --hidden-import=anthropic `
-          --hidden-import=pandas `
-          --hidden-import=numpy `
-          --hidden-import=numpy.core `
-          --hidden-import=numpy.core._multiarray_umath `
-          --collect-submodules=pandas `
-          --collect-submodules=numpy `
-          --hidden-import=urllib `
-          --hidden-import=urllib.request `
-          --hidden-import=json `
-          --hidden-import=base64 `
-          --hidden-import=hashlib `
-          --hidden-import=pathlib `
-          --hidden-import=threading `
-          --hidden-import=socket `
-          --hidden-import=subprocess `
-          --hidden-import=shutil `
-          --hidden-import=tempfile `
-          --hidden-import=zipfile `
-          --hidden-import=logging `
-          --hidden-import=logging.handlers `
-          gui_app.pyw
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Layer8 GUI ${{ github.ref_name }}
+          body: |
+            ## Layer8 Security Platform ${{ github.ref_name }}
 
-    - name: Create version info
-      run: |
-        $version = "${{ github.ref_name }}".TrimStart('v')
-        @{
-          version = $version
-          build_date = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-          commit = "${{ github.sha }}".Substring(0,7)
-        } | ConvertTo-Json | Out-File -FilePath dist/version.json -Encoding UTF8
+            ### Install
+            1. Download **layer8-gui-windows.zip** below.
+            2. Extract it anywhere.
+            3. Run **Layer8-GUI.exe** - no install, no setup.
+            4. Sign in with the email and access key issued from the Layer8 web console.
 
-    - name: Package distribution
-      run: |
-        cd dist
-        Compress-Archive -Path * -DestinationPath ../layer8-gui-windows.zip
+            The app checks for updates automatically on startup.
 
-    - name: Upload Windows artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: layer8-gui-windows
-        path: layer8-gui-windows.zip
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what changed.
+          files: release/layer8-gui-windows.zip
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
 
-  build-linux:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
-
-    - name: Create .env with actual credentials
-      run: |
-        cat > .env << EOF
-        L8_DB_HOST=${{ secrets.L8_DB_HOST }}
-        L8_DB_PORT=${{ secrets.L8_DB_PORT }}
-        L8_DB_NAME=${{ secrets.L8_DB_NAME }}
-        L8_DB_USER=${{ secrets.L8_DB_USER }}
-        L8_DB_PASS=${{ secrets.L8_DB_PASS }}
-        MYSQL_HOST=${{ secrets.L8_DB_HOST }}
-        MYSQL_PORT=${{ secrets.L8_DB_PORT }}
-        MYSQL_DATABASE=${{ secrets.L8_DB_NAME }}
-        MYSQL_USER=${{ secrets.L8_DB_USER }}
-        MYSQL_PASSWORD=${{ secrets.L8_DB_PASS }}
-        L8_DB_DIALECT=mysql
-        L8_PEPPER=${{ secrets.L8_PEPPER }}
-        L8_PWD_KEY_B64=${{ secrets.L8_PWD_KEY_B64 }}
-        L8_PWD_KEY_ID=k1
-        L8_ARGON_MEMORY_COST=131072
-        L8_ARGON_TIME_COST=3
-        L8_ARGON_THREADS=2
-        L8_SESSION_NAME=layer8_admin
-        L8_SESSION_SECURE=true
-        L8_SESSION_SAMESITE=Lax
-        L8_MAX_FAILED_ATTEMPTS=5
-        L8_LOCKOUT_WINDOW_MIN=15
-        ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
-        CLAUDE_API_KEY=${{ secrets.CLAUDE_API_KEY }}
-        EOF
-
-    - name: Build executable with PyInstaller
-      run: |
-        pyinstaller --name "Layer8-GUI" \
-          --onefile \
-          --windowed \
-          --add-data "Layer8:Layer8" \
-          --add-data ".env:." \
-          --add-data "modern_theme.py:." \
-          --add-data "db_connection.py:." \
-          --add-data "config.py:." \
-          --add-data "scanner_tools.py:." \
-          --add-data "ai_analyzer.py:." \
-          --add-data "updater.py:." \
-          --add-data "updater_gui.py:." \
-          --hidden-import=tkinter \
-          --hidden-import=tkinter.ttk \
-          --hidden-import=tkinter.font \
-          --hidden-import=tkinter.scrolledtext \
-          --hidden-import=tkinter.messagebox \
-          --hidden-import=tkinter.filedialog \
-          --hidden-import=PIL \
-          --hidden-import=PIL.Image \
-          --hidden-import=PIL.ImageTk \
-          --hidden-import=PIL._imaging \
-          --hidden-import=pymysql \
-          --hidden-import=pymysql.cursors \
-          --hidden-import=pymysql.constants \
-          --hidden-import=pymysql.converters \
-          --hidden-import=sqlite3 \
-          --hidden-import=nacl \
-          --hidden-import=nacl.secret \
-          --hidden-import=nacl.utils \
-          --hidden-import=nacl.encoding \
-          --hidden-import=argon2 \
-          --hidden-import=argon2.low_level \
-          --hidden-import=argon2.exceptions \
-          --hidden-import=Crypto \
-          --hidden-import=Crypto.Cipher \
-          --hidden-import=Crypto.Cipher.AES \
-          --hidden-import=Crypto.Random \
-          --hidden-import=keyring \
-          --collect-submodules=keyring \
-          --collect-submodules=cryptography \
-          --hidden-import=dotenv \
-          --hidden-import=scapy \
-          --hidden-import=scapy.all \
-          --hidden-import=scapy.layers.inet \
-          --hidden-import=scapy.layers.dns \
-          --hidden-import=scapy.layers.l2 \
-          --hidden-import=requests \
-          --hidden-import=anthropic \
-          --hidden-import=pandas \
-          --hidden-import=numpy \
-          --hidden-import=numpy.core \
-          --hidden-import=numpy.core._multiarray_umath \
-          --collect-submodules=pandas \
-          --collect-submodules=numpy \
-          --hidden-import=urllib \
-          --hidden-import=urllib.request \
-          --hidden-import=json \
-          --hidden-import=base64 \
-          --hidden-import=hashlib \
-          --hidden-import=pathlib \
-          --hidden-import=threading \
-          --hidden-import=socket \
-          --hidden-import=subprocess \
-          --hidden-import=shutil \
-          --hidden-import=tempfile \
-          --hidden-import=zipfile \
-          --hidden-import=logging \
-          --hidden-import=logging.handlers \
-          gui_app.pyw
-
-    - name: Create version info
-      run: |
-        version="${{ github.ref_name }}"
-        version="${version#v}"
-        echo "{\"version\":\"$version\",\"build_date\":\"$(date '+%Y-%m-%d %H:%M:%S')\",\"commit\":\"${GITHUB_SHA:0:7}\"}" > dist/version.json
-
-    - name: Package distribution
-      run: |
-        cd dist
-        zip -r ../layer8-gui-linux.zip *
-
-    - name: Upload Linux artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: layer8-gui-linux
-        path: layer8-gui-linux.zip
-
-  build-macos:
-    runs-on: macos-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
-
-    - name: Create .env with actual credentials
-      run: |
-        cat > .env << EOF
-        L8_DB_HOST=${{ secrets.L8_DB_HOST }}
-        L8_DB_PORT=${{ secrets.L8_DB_PORT }}
-        L8_DB_NAME=${{ secrets.L8_DB_NAME }}
-        L8_DB_USER=${{ secrets.L8_DB_USER }}
-        L8_DB_PASS=${{ secrets.L8_DB_PASS }}
-        MYSQL_HOST=${{ secrets.L8_DB_HOST }}
-        MYSQL_PORT=${{ secrets.L8_DB_PORT }}
-        MYSQL_DATABASE=${{ secrets.L8_DB_NAME }}
-        MYSQL_USER=${{ secrets.L8_DB_USER }}
-        MYSQL_PASSWORD=${{ secrets.L8_DB_PASS }}
-        L8_DB_DIALECT=mysql
-        L8_PEPPER=${{ secrets.L8_PEPPER }}
-        L8_PWD_KEY_B64=${{ secrets.L8_PWD_KEY_B64 }}
-        L8_PWD_KEY_ID=k1
-        L8_ARGON_MEMORY_COST=131072
-        L8_ARGON_TIME_COST=3
-        L8_ARGON_THREADS=2
-        L8_SESSION_NAME=layer8_admin
-        L8_SESSION_SECURE=true
-        L8_SESSION_SAMESITE=Lax
-        L8_MAX_FAILED_ATTEMPTS=5
-        L8_LOCKOUT_WINDOW_MIN=15
-        ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
-        CLAUDE_API_KEY=${{ secrets.CLAUDE_API_KEY }}
-        EOF
-
-    - name: Build executable with PyInstaller
-      run: |
-        pyinstaller --name "Layer8-GUI" \
-          --onefile \
-          --windowed \
-          --add-data "Layer8:Layer8" \
-          --add-data ".env:." \
-          --add-data "modern_theme.py:." \
-          --add-data "db_connection.py:." \
-          --add-data "config.py:." \
-          --add-data "scanner_tools.py:." \
-          --add-data "ai_analyzer.py:." \
-          --add-data "updater.py:." \
-          --add-data "updater_gui.py:." \
-          --hidden-import=tkinter \
-          --hidden-import=tkinter.ttk \
-          --hidden-import=tkinter.font \
-          --hidden-import=tkinter.scrolledtext \
-          --hidden-import=tkinter.messagebox \
-          --hidden-import=tkinter.filedialog \
-          --hidden-import=PIL \
-          --hidden-import=PIL.Image \
-          --hidden-import=PIL.ImageTk \
-          --hidden-import=PIL._imaging \
-          --hidden-import=pymysql \
-          --hidden-import=pymysql.cursors \
-          --hidden-import=pymysql.constants \
-          --hidden-import=pymysql.converters \
-          --hidden-import=sqlite3 \
-          --hidden-import=nacl \
-          --hidden-import=nacl.secret \
-          --hidden-import=nacl.utils \
-          --hidden-import=nacl.encoding \
-          --hidden-import=argon2 \
-          --hidden-import=argon2.low_level \
-          --hidden-import=argon2.exceptions \
-          --hidden-import=Crypto \
-          --hidden-import=Crypto.Cipher \
-          --hidden-import=Crypto.Cipher.AES \
-          --hidden-import=Crypto.Random \
-          --hidden-import=keyring \
-          --collect-submodules=keyring \
-          --collect-submodules=cryptography \
-          --hidden-import=dotenv \
-          --hidden-import=scapy \
-          --hidden-import=scapy.all \
-          --hidden-import=scapy.layers.inet \
-          --hidden-import=scapy.layers.dns \
-          --hidden-import=scapy.layers.l2 \
-          --hidden-import=requests \
-          --hidden-import=anthropic \
-          --hidden-import=pandas \
-          --hidden-import=numpy \
-          --hidden-import=numpy.core \
-          --hidden-import=numpy.core._multiarray_umath \
-          --collect-submodules=pandas \
-          --collect-submodules=numpy \
-          --hidden-import=urllib \
-          --hidden-import=urllib.request \
-          --hidden-import=json \
-          --hidden-import=base64 \
-          --hidden-import=hashlib \
-          --hidden-import=pathlib \
-          --hidden-import=threading \
-          --hidden-import=socket \
-          --hidden-import=subprocess \
-          --hidden-import=shutil \
-          --hidden-import=tempfile \
-          --hidden-import=zipfile \
-          --hidden-import=logging \
-          --hidden-import=logging.handlers \
-          gui_app.pyw
-
-    - name: Create version info
-      run: |
-        version="${{ github.ref_name }}"
-        version="${version#v}"
-        echo "{\"version\":\"$version\",\"build_date\":\"$(date '+%Y-%m-%d %H:%M:%S')\",\"commit\":\"${GITHUB_SHA:0:7}\"}" > dist/version.json
-
-    - name: Package distribution
-      run: |
-        cd dist
-        zip -r ../layer8-gui-macos.zip *
-
-    - name: Upload macOS artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: layer8-gui-macos
-        path: layer8-gui-macos.zip
-
-  create-release:
-    needs: [build-windows, build-linux, build-macos]
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-
-    - name: Create Release and Upload Assets
-      uses: softprops/action-gh-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        name: Layer8 GUI ${{ github.ref_name }}
-        body: |
-          ## Layer8 Security Platform ${{ github.ref_name }}
-
-          ### What's New
-          - See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details
-
-          ### Downloads
-          - **Windows**: Download `layer8-gui-windows.zip`
-          - **Linux**: Download `layer8-gui-linux.zip`
-          - **macOS**: Download `layer8-gui-macos.zip`
-
-          ### Installation
-          1. Download the appropriate file for your platform
-          2. Extract the ZIP file
-          3. Run the `Layer8-GUI` executable
-
-          ### Auto-Update
-          This release supports automatic updates. The application will check for new versions on startup.
-
-          ### Requirements
-          - MySQL database (optional for offline mode)
-          - Internet connection for cloud features
-
-          ---
-          🤖 Built automatically with GitHub Actions
-        files: |
-          artifacts/layer8-gui-windows/layer8-gui-windows.zip
-          artifacts/layer8-gui-linux/layer8-gui-linux.zip
-          artifacts/layer8-gui-macos/layer8-gui-macos.zip
-        draft: false
-        prerelease: false
-        fail_on_unmatched_files: true
+      - name: Upload build artifact (non-tag runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: layer8-gui-windows
+          path: release/layer8-gui-windows.zip

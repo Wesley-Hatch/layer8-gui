@@ -7,10 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Sign-in is now verified by the Layer8 web console** ([access_client.py](access_client.py)).
+  The app no longer connects to a local/MySQL database to authenticate — users
+  sign in with the email and access key issued from the web console, and the
+  website controls suspend / revoke / expire / seat limits / version floor /
+  maintenance at sign-in.
+- **Runs out of the box.** Removed the startup MySQL diagnostic splash and the
+  "Test Connection" step; the app opens straight to the web-console login.
+- Admin Panel now links to the web console (where users are managed) instead of
+  editing a database directly.
+- Build runs through `build.py`; the release workflow publishes the Windows
+  `.exe` to GitHub Releases on version tags (DB secret injection removed).
+
+### Removed
+- Local database setup and code: `db_connection.py`, `secure_config.py`, the
+  setup wizard, credential/reset utilities, and the MySQL/DB test scripts.
+- Unused Django scaffolding and internal setup docs.
+- Dependencies no longer needed: `pymysql`, `keyring`, `argon2-cffi`,
+  `pycryptodome`.
+
 ### Planned
 - Additional scanning tools
 - Enhanced AI analysis features
-- Mobile companion app
 
 ---
 

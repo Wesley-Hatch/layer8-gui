@@ -15,7 +15,10 @@ from datetime import datetime
 
 # Configuration
 APP_NAME = "Layer8-GUI"
-VERSION = "1.2.7"  # Update this for each release
+# Version comes from the git tag in CI (L8_VERSION, e.g. "v1.4.2"); falls back
+# to this constant for local builds. Update the constant for each release.
+_raw_version = os.environ.get("L8_VERSION", "1.4.2")
+VERSION = _raw_version[1:] if _raw_version.startswith("v") else _raw_version
 ICON_PATH = "Layer8/Media/Layer8-logo.ico"
 MAIN_SCRIPT = "gui_app.pyw"
 
@@ -25,29 +28,34 @@ DIST_DIR = ROOT_DIR / "dist"
 BUILD_DIR = ROOT_DIR / "build"
 RELEASE_DIR = ROOT_DIR / "release"
 
-# Data files to include
+# Data files to include (bundled alongside the app; imported dynamically)
 DATA_FILES = [
     ("Layer8", "Layer8"),
     ("modern_theme.py", "."),
-    ("db_connection.py", "."),
-    ("config.py", "."),
+    ("access_client.py", "."),
     ("scanner_tools.py", "."),
     ("ai_analyzer.py", "."),
     ("updater.py", "."),
+    ("updater_gui.py", "."),
+    ("secure_logger.py", "."),
+    ("input_validator.py", "."),
+    ("safe_executor.py", "."),
+    ("tool_checker.py", "."),
+    ("tool_simulator.py", "."),
 ]
 
 # Hidden imports (modules that PyInstaller might miss)
 HIDDEN_IMPORTS = [
     "PIL",
     "PIL._imaging",
-    "pymysql",
-    "pymysql.cursors",
     "dotenv",
     "nacl",
-    "nacl.secret",
-    "argon2",
-    "argon2.low_level",
+    "nacl.signing",
+    "nacl.encoding",
     "anthropic",
+    "scapy",
+    "scapy.all",
+    "requests",
     "tkinter",
 ]
 
