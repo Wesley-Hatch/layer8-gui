@@ -13,6 +13,14 @@ from pathlib import Path
 import json
 from datetime import datetime
 
+# Make stdout/stderr tolerant of non-ASCII on Windows consoles (cp1252), so
+# build logs (including captured PyInstaller output) never crash the build.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Configuration
 APP_NAME = "Layer8-GUI"
 # Version comes from the git tag in CI (L8_VERSION, e.g. "v1.4.2"); falls back
@@ -62,7 +70,7 @@ HIDDEN_IMPORTS = [
 
 def clean_build():
     """Clean previous build artifacts"""
-    print("🧹 Cleaning previous builds...")
+    print("[clean] Cleaning previous builds...")
 
     for directory in [DIST_DIR, BUILD_DIR, RELEASE_DIR]:
         if directory.exists():
@@ -90,16 +98,17 @@ def create_version_file():
     with open(version_file, 'w') as f:
         json.dump(version_data, f, indent=2)
 
-    print(f"✅ Created version file: {version_file}")
+    print(f"[ok] Created version file: {version_file}")
 
 
 def build_executable():
     """Build executable using PyInstaller"""
-    print(f"🔨 Building {APP_NAME} v{VERSION}...")
+    print(f"[build] Building {APP_NAME} v{VERSION}...")
 
-    # Build PyInstaller command
+    # Build PyInstaller command. Invoke via the current interpreter so it works
+    # whether or not the "pyinstaller" console script is on PATH.
     cmd = [
-        "pyinstaller",
+        sys.executable, "-m", "PyInstaller",
         "--name", APP_NAME,
         "--onefile",
         "--windowed",
@@ -132,17 +141,17 @@ def build_executable():
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print("❌ Build failed!")
+        print("[error] Build failed!")
         print(result.stderr)
         return False
 
-    print("✅ Build successful!")
+    print("[ok] Build successful!")
     return True
 
 
 def package_release():
     """Package the release into a zip file"""
-    print("📦 Packaging release...")
+    print("[package] Packaging release...")
 
     RELEASE_DIR.mkdir(exist_ok=True)
 
@@ -182,7 +191,7 @@ def package_release():
             zipf.write(readme, "README.md")
             print(f"   Added README.md")
 
-    print(f"✅ Created release package: {zip_path}")
+    print(f"[ok] Created release package: {zip_path}")
     return zip_path
 
 
@@ -198,7 +207,7 @@ def main():
     try:
         import PyInstaller
     except ImportError:
-        print("❌ PyInstaller not found!")
+        print("[error] PyInstaller not found!")
         print("Install it with: pip install pyinstaller")
         return 1
 
@@ -216,7 +225,7 @@ def main():
     zip_path = package_release()
 
     print("\n" + "=" * 60)
-    print("✅ BUILD COMPLETE!")
+    print("[ok] BUILD COMPLETE!")
     print("=" * 60)
     print(f"Executable: {DIST_DIR / APP_NAME}")
     print(f"Package: {zip_path}")
