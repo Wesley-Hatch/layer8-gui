@@ -57,7 +57,7 @@ API_URL = os.environ.get(
 
 # Reported to the server and compared against the console's "oldest allowed
 # version". Keep in step with the app's real version.
-APP_VERSION = os.environ.get("L8_APP_VERSION", "1.4.2")
+APP_VERSION = os.environ.get("L8_APP_VERSION", "1.4.3")
 
 # Per-install state (device id, last good answer, clock high-water mark).
 _STATE_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Layer8"

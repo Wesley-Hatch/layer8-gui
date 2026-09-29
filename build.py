@@ -25,7 +25,7 @@ for _stream in (sys.stdout, sys.stderr):
 APP_NAME = "Layer8-GUI"
 # Version comes from the git tag in CI (L8_VERSION, e.g. "v1.4.2"); falls back
 # to this constant for local builds. Update the constant for each release.
-_raw_version = os.environ.get("L8_VERSION", "1.4.2")
+_raw_version = os.environ.get("L8_VERSION", "1.4.3")
 VERSION = _raw_version[1:] if _raw_version.startswith("v") else _raw_version
 ICON_PATH = "Layer8/Media/Layer8-logo.ico"
 MAIN_SCRIPT = "gui_app.pyw"
@@ -60,11 +60,26 @@ HIDDEN_IMPORTS = [
     "nacl",
     "nacl.signing",
     "nacl.encoding",
+    # PyNaCl's compiled libsodium bindings. Without this the import of
+    # nacl.signing throws at runtime inside the frozen app, _HAVE_NACL becomes
+    # False, and every signed answer from the access console reads as
+    # "untrusted". Explicitly naming it (plus --collect-all nacl below) ensures
+    # the _sodium shared library is bundled on every platform, especially Linux.
+    "nacl._sodium",
+    "_cffi_backend",
     "anthropic",
     "scapy",
     "scapy.all",
     "requests",
     "tkinter",
+]
+
+# Packages whose submodules, data files, AND compiled shared libraries must all
+# be pulled in. `nacl` ships libsodium as a binary extension that PyInstaller's
+# static analysis misses; --collect-all is the reliable way to include it.
+COLLECT_ALL = [
+    "nacl",
+    "cffi",
 ]
 
 
@@ -132,6 +147,11 @@ def build_executable():
     # Add hidden imports
     for module in HIDDEN_IMPORTS:
         cmd.extend(["--hidden-import", module])
+
+    # Collect everything (code + data + binaries) for packages whose native
+    # libraries would otherwise be dropped from the frozen app.
+    for package in COLLECT_ALL:
+        cmd.extend(["--collect-all", package])
 
     # Add main script
     cmd.append(MAIN_SCRIPT)
