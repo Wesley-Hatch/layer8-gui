@@ -6,10 +6,10 @@
 
 **Security analysis & network monitoring, in one desktop app.**
 
-[![Release](https://img.shields.io/github/v/release/Wesley-Hatch/Layer8-GUI)](https://github.com/Wesley-Hatch/Layer8-GUI/releases/latest)
+[![Release](https://img.shields.io/github/v/release/Wesley-Hatch/layer8-gui)](https://github.com/Wesley-Hatch/layer8-gui/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue)]()
 
-[**Download the latest release**](https://github.com/Wesley-Hatch/Layer8-GUI/releases/latest) • [Changelog](CHANGELOG.md)
+[**Download the latest release**](https://github.com/Wesley-Hatch/layer8-gui/releases/latest) • [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -17,7 +17,7 @@
 
 ## Download & run (no setup)
 
-1. Go to the [**latest release**](https://github.com/Wesley-Hatch/Layer8-GUI/releases/latest).
+1. Go to the [**latest release**](https://github.com/Wesley-Hatch/layer8-gui/releases/latest).
 2. Download **`layer8-gui-windows.zip`**.
 3. Extract it anywhere and run **`Layer8-GUI.exe`**.
 4. Sign in with the **email** and **access key** issued to you from the Layer8 web console.
@@ -64,7 +64,7 @@ You only need this if you want to build the `.exe` yourself or run from source.
 **Requirements:** Windows, Python 3.11+.
 
 ```bash
-git clone https://github.com/Wesley-Hatch/Layer8-GUI.git
+git clone https://github.com/Wesley-Hatch/layer8-gui.git
 cd Layer8-GUI
 python -m venv .venv
 .venv\Scripts\activate

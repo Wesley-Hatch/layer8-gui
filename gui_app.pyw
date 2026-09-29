@@ -321,7 +321,7 @@ def main(db_available=None, db_error=None):
         root=root,
         menu_bar=menu_bar,
         current_version=current_version,
-        update_url="https://api.github.com/repos/Wesley-Hatch/Layer8-GUI/releases/latest"
+        update_url="https://api.github.com/repos/Wesley-Hatch/layer8-gui/releases/latest"
     )
 
     # Check for updates in background (silent check on startup)

@@ -625,7 +625,7 @@ if __name__ == "__main__":
     # Example usage
     updater = Layer8Updater(
         current_version="1.0.1",
-        update_url="https://api.github.com/repos/Wesley-Hatch/Layer8-GUI/releases/latest",
+        update_url="https://api.github.com/repos/Wesley-Hatch/layer8-gui/releases/latest",
         app_directory=Path(__file__).parent
     )
     
