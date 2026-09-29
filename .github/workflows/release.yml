@@ -12,7 +12,6 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,31 +32,84 @@ jobs:
           L8_VERSION: ${{ github.ref_name }}
         run: python build.py
 
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: layer8-gui-windows
+          path: release/layer8-gui-windows.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpcap-dev python3-tk
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable
+        env:
+          L8_VERSION: ${{ github.ref_name }}
+        run: python build.py
+
+      - name: Upload Linux build
+        uses: actions/upload-artifact@v4
+        with:
+          name: layer8-gui-linux
+          path: release/layer8-gui-linux.zip
+
+  release:
+    needs: [build-windows, build-linux]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           name: Layer8 GUI ${{ github.ref_name }}
           body: |
             ## Layer8 Security Platform ${{ github.ref_name }}
 
-            ### Install
+            ### Windows
             1. Download **layer8-gui-windows.zip** below.
-            2. Extract it anywhere.
-            3. Run **Layer8-GUI.exe** - no install, no setup.
-            4. Sign in with the email and access key issued from the Layer8 web console.
+            2. Extract it anywhere and run **Layer8-GUI.exe** - no install, no setup.
 
+            ### Linux
+            1. Download **layer8-gui-linux.zip** below.
+            2. Extract it: `unzip layer8-gui-linux.zip`
+            3. Make it executable and run it:
+               ```bash
+               chmod +x Layer8-GUI
+               ./Layer8-GUI
+               ```
+            4. Network capture tools need libpcap and root:
+               `sudo apt install libpcap0.8` then run with `sudo ./Layer8-GUI`.
+
+            Sign in with the email and access key issued from the Layer8 web console.
             The app checks for updates automatically on startup.
 
             See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what changed.
-          files: release/layer8-gui-windows.zip
+          files: |
+            artifacts/layer8-gui-windows/layer8-gui-windows.zip
+            artifacts/layer8-gui-linux/layer8-gui-linux.zip
           draft: false
           prerelease: false
           fail_on_unmatched_files: true
-
-      - name: Upload build artifact (non-tag runs)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: layer8-gui-windows
-          path: release/layer8-gui-windows.zip

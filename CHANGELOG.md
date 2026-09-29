@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Linux support.** The release workflow now builds a Linux executable
+  alongside Windows and publishes both; `build.py` is Linux-aware, and the
+  README has Linux download/run/build instructions.
+
 ### Changed
 - **Sign-in is now verified by the Layer8 web console** ([access_client.py](access_client.py)).
   The app no longer connects to a local/MySQL database to authenticate — users

@@ -105,9 +105,15 @@ def build_executable():
         "--windowed",
     ]
 
-    # Add icon if exists
-    if Path(ICON_PATH).exists():
-        cmd.extend(["--icon", ICON_PATH])
+    # Add icon (Windows/macOS embed it; PyInstaller ignores --icon on Linux,
+    # so skip it there to avoid a build warning).
+    if sys.platform != "linux":
+        if sys.platform == "darwin":
+            icon = "Layer8/Media/Layer8-logo.png"
+        else:
+            icon = ICON_PATH
+        if Path(icon).exists():
+            cmd.extend(["--icon", icon])
 
     # Add data files
     for src, dest in DATA_FILES:
