@@ -45,6 +45,7 @@ logs/
 # Tool output
 captures/
 scans/
+reports/
 
 # Old / scratch
 _old_desktop_builds/

@@ -20,5 +20,9 @@ python-dotenv>=1.0.0
 # Data tables (optional; some tools summarize/export with pandas)
 pandas>=2.0.0
 
+# Windows Auditor - remote host auditing over WinRM (win_audit --winrm).
+# Only needed for REMOTE audits; local audits work without it.
+pywinrm>=0.4.3
+
 # Build tool (only needed to build the .exe yourself)
 # pyinstaller>=6.0.0

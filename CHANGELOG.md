@@ -38,6 +38,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.0] - 2026-09-29
+
+### Added
+- **Windows Vulnerability Auditor** (`win_audit/`) — a read-only, authorized
+  configuration and vulnerability auditor for Windows hosts. Runs **67 checks
+  across 13 categories**, locally or against a remote host over **WinRM**, and
+  writes findings to **CSV/JSON**. Every finding carries a severity and a
+  **MITRE ATT&CK** technique id.
+  - **Baseline profile (6 categories):** misconfigurations, patch status,
+    accounts & permissions, network & services, endpoint protection, logging &
+    audit policy.
+  - **Deep profile (7 more, default):** privilege-escalation vectors (writable
+    service binaries/registry keys, PATH/DLL hijack, dangerous token
+    privileges), credential access & secrets at rest (autologon/GPP
+    cpassword/cmdkey/Wi-Fi/unattend — reported without dumping plaintext),
+    coercion/relay/lateral movement (Spooler/WebDAV/WSUS-HTTP/NTLM/SMB & LDAP
+    signing), crypto & exploit-mitigation hardening, persistence & compromise
+    hunt (IFEO/accessibility backdoors, Winlogon/AppInit, WMI subscriptions),
+    detection & EDR posture (Defender exclusions, ASR, Sysmon), and Active
+    Directory attack surface (Kerberoast, AS-REP, delegation, MAQ, LAPS) via
+    built-in ADSI (no RSAT).
+  - CLI: `python -m win_audit` (`--profile baseline|deep`, `--winrm`,
+    `--categories`, `--only/--exclude`, `--format csv|json|both`); non-zero exit
+    on any FAIL for scheduled runs. Reuses Layer8's `input_validator` and
+    `secure_logger`. Docs in `docs/WINDOWS_AUDITOR_*`.
+
+### Changed
+- `requirements.txt`: added optional `pywinrm` (remote WinRM auditing only).
+- `.gitignore`: ignore generated `reports/` audit output.
+
+---
+
 ## [1.0.1] - 2026-01-30
 
 ### Added
