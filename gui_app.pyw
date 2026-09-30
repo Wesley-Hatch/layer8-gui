@@ -803,6 +803,80 @@ def main(db_available=None, db_error=None):
         if scanner.history:
             refresh_reports()
 
+        def show_tool_usecase(tool_name):
+            """Open a themed panel describing a tool's purpose, when/how to use it,
+            its capabilities and caveats (content from tool_docs.TOOL_DOCS)."""
+            try:
+                from tool_docs import get_tool_doc
+            except Exception:
+                messagebox.showinfo("Use Case", "Tool documentation is unavailable.")
+                return
+            doc = get_tool_doc(tool_name)
+
+            win = tk.Toplevel(root)
+            win.overrideredirect(True)
+            win.geometry("560x580")
+            win.configure(bg="#1e1e1e")
+            try:
+                win.update_idletasks()
+                x = root.winfo_x() + (root.winfo_width() // 2) - 280
+                y = root.winfo_y() + (root.winfo_height() // 2) - 290
+                win.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+            except Exception:
+                pass
+
+            bar = tk.Frame(win, bg=title_bar_color.get(), height=30)
+            bar.pack(side="top", fill="x")
+            tk.Label(bar, text=f"USE CASE  —  {tool_name}", bg=title_bar_color.get(), fg=fg_color,
+                     font=("Segoe UI", 10, "bold")).pack(side="left", padx=10)
+            tk.Button(bar, text="✕", command=win.destroy, bg=title_bar_color.get(), fg=fg_color,
+                      bd=0, activebackground="red", activeforeground=fg_color, font=("Arial", 12),
+                      width=3).pack(side="right")
+
+            def _sm(e):
+                win._dx, win._dy = e.x, e.y
+
+            def _mv(e):
+                win.geometry(f"+{win.winfo_x() + e.x - win._dx}+{win.winfo_y() + e.y - win._dy}")
+            bar.bind("<Button-1>", _sm)
+            bar.bind("<B1-Motion>", _mv)
+
+            frame = tk.Frame(win, bg="#1e1e1e")
+            frame.pack(fill="both", expand=True, padx=2, pady=2)
+            sb = tk.Scrollbar(frame)
+            sb.pack(side="right", fill="y")
+            txt = tk.Text(frame, bg="#0d0d0d", fg="#e0e0e0", bd=0, wrap="word",
+                          font=("Segoe UI", 10), yscrollcommand=sb.set, padx=14, pady=12)
+            txt.pack(side="left", fill="both", expand=True)
+            sb.config(command=txt.yview)
+
+            acc = accent_color.get()
+            txt.tag_configure("tagline", foreground="#9aa0a6", font=("Segoe UI", 9, "italic"), spacing3=10)
+            txt.tag_configure("h", foreground=acc, font=("Segoe UI", 11, "bold"), spacing1=12, spacing3=4)
+            txt.tag_configure("body", foreground="#e0e0e0", font=("Segoe UI", 10), spacing3=4)
+            txt.tag_configure("bullet", foreground="#cfcfcf", font=("Segoe UI", 10),
+                              lmargin1=16, lmargin2=30, spacing3=3)
+            txt.tag_configure("warn", foreground="#e67e22", font=("Segoe UI", 10),
+                              lmargin1=16, lmargin2=30, spacing3=3)
+
+            if doc.get("tagline"):
+                txt.insert("end", doc["tagline"] + "\n", "tagline")
+
+            def section(title, content, bullet_tag="bullet"):
+                txt.insert("end", title + "\n", "h")
+                if isinstance(content, list):
+                    for item in content:
+                        txt.insert("end", "•  " + item + "\n", bullet_tag)
+                else:
+                    txt.insert("end", (content or "-") + "\n", "body")
+
+            section("Purpose", doc.get("purpose", ""))
+            section("When to use it", doc.get("when", ""))
+            section("How to use it", doc.get("how", ""))
+            section("Capabilities", doc.get("capabilities", []))
+            section("Caveats & cautions", doc.get("caveats", []), bullet_tag="warn")
+            txt.config(state="disabled")
+
         def show_tool_screen(tool_name, tool_func):
             nonlocal status_text
             clear_canvas()
@@ -816,9 +890,16 @@ def main(db_available=None, db_error=None):
                 canvas.coords(status_text, 212, 25) # Reset status_text position
                 show_main_menu(username, is_admin, db_available)
 
-            back_btn = tk.Button(root, text="← BACK", bg="#1e1e1e", fg="#aaaaaa", bd=0, font=("Segoe UI", 8, "bold"), 
+            back_btn = tk.Button(root, text="← BACK", bg="#1e1e1e", fg="#aaaaaa", bd=0, font=("Segoe UI", 8, "bold"),
                                  activebackground="#333333", activeforeground="#ffffff", cursor="hand2", command=go_back)
             canvas.create_window(20, 25, window=back_btn, anchor="w")
+
+            # Per-tool "Use Case" info panel (purpose / when / how / caveats)
+            usecase_btn = tk.Button(root, text="ℹ USE CASE", bg="#2c3e50", fg="#ffffff", bd=0,
+                                    font=("Segoe UI", 8, "bold"), activebackground="#34495e",
+                                    activeforeground="#ffffff", cursor="hand2",
+                                    command=lambda tn=tool_name: show_tool_usecase(tn))
+            usecase_btn_id = canvas.create_window(632, 25, window=usecase_btn, anchor="e")
 
             # Target Selection in tool screen
             target_label_id = canvas.create_text(212, 80, text="TARGET ADDRESS / DOMAIN", fill="#aaaaaa", font=("Segoe UI", 8, "bold"), anchor="center")
@@ -833,7 +914,37 @@ def main(db_available=None, db_error=None):
                 persistent_target[0] = tool_target_entry.get()
             tool_target_entry.bind("<KeyRelease>", update_tool_target)
 
-            current_y = 145
+            # --- Scan own machine (localhost) toggle ---
+            # When checked, the scan runs against THIS machine (127.0.0.1)
+            # regardless of what's typed above, and the target box is locked.
+            scan_own_machine = tk.BooleanVar(value=False)
+            _prev_tool_target = [persistent_target[0]]
+
+            def toggle_scan_own_machine():
+                if scan_own_machine.get():
+                    _prev_tool_target[0] = tool_target_entry.get()
+                    tool_target_entry.config(state="normal")
+                    tool_target_entry.delete(0, tk.END)
+                    tool_target_entry.insert(0, "127.0.0.1")
+                    tool_target_entry.config(state="disabled")
+                else:
+                    tool_target_entry.config(state="normal")
+                    tool_target_entry.delete(0, tk.END)
+                    restore = "" if _prev_tool_target[0] == "127.0.0.1" else _prev_tool_target[0]
+                    tool_target_entry.insert(0, restore)
+                    persistent_target[0] = restore
+
+            own_machine_frame = tk.Frame(root, bg="#1e1e1e")
+            own_machine_cb = tk.Checkbutton(
+                own_machine_frame, text="Scan own machine (localhost)",
+                variable=scan_own_machine, command=toggle_scan_own_machine,
+                bg="#1e1e1e", fg="#00ff00", selectcolor="#1e1e1e",
+                activebackground="#1e1e1e", activeforeground="#00ff00",
+                font=("Segoe UI", 8, "bold"), borderwidth=0, cursor="hand2")
+            own_machine_cb.pack()
+            own_machine_cb_id = canvas.create_window(212, 140, window=own_machine_frame, anchor="center")
+
+            current_y = 168
 
             # Common Variables for Tool Screens
             scan_type_var = tk.StringVar(value="Standard")
@@ -977,7 +1088,7 @@ def main(db_available=None, db_error=None):
             results_id = canvas.create_window(212, 480, window=results_frame, anchor="center")
             
             # List of items to keep centered if window expands
-            centered_tool_items = [tool_title_id, results_id, progress_bar_id, target_label_id, target_window_id]
+            centered_tool_items = [tool_title_id, results_id, progress_bar_id, target_label_id, target_window_id, own_machine_cb_id]
 
             notebook = ttk.Notebook(results_frame, style="TNotebook")
             notebook.pack(fill="both", expand=True)
@@ -1169,7 +1280,7 @@ def main(db_available=None, db_error=None):
                 root.after(0, update_ui)
 
             def run_this_tool():
-                target = tool_target_entry.get()
+                target = "127.0.0.1" if scan_own_machine.get() else tool_target_entry.get()
                 intensity = int(intensity_scale.get())
                 s_type = scan_type_var.get()
                 b_type = brute_type_var.get() if is_dir_brute else None
@@ -1312,9 +1423,16 @@ def main(db_available=None, db_error=None):
                 canvas.coords(status_text, 212, 25) # Reset status_text position
                 show_main_menu(username, is_admin, db_available)
 
-            back_btn = tk.Button(root, text="← BACK", bg="#1e1e1e", fg="#aaaaaa", bd=0, font=("Segoe UI", 8, "bold"), 
+            back_btn = tk.Button(root, text="← BACK", bg="#1e1e1e", fg="#aaaaaa", bd=0, font=("Segoe UI", 8, "bold"),
                                  activebackground="#333333", activeforeground="#ffffff", cursor="hand2", command=go_back_ddos)
             canvas.create_window(20, 25, window=back_btn, anchor="w")
+
+            # Per-tool "Use Case" info panel
+            ddos_usecase_btn = tk.Button(root, text="ℹ USE CASE", bg="#2c3e50", fg="#ffffff", bd=0,
+                                         font=("Segoe UI", 8, "bold"), activebackground="#34495e",
+                                         activeforeground="#ffffff", cursor="hand2",
+                                         command=lambda: show_tool_usecase("DDoS Tool"))
+            canvas.create_window(632, 25, window=ddos_usecase_btn, anchor="e")
 
             # Target Selection
             target_label_id = canvas.create_text(212, 80, text="TARGET ADDRESS / DOMAIN", fill="#aaaaaa", font=("Segoe UI", 8, "bold"), anchor="center")

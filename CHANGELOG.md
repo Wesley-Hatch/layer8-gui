@@ -38,6 +38,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.1] - 2026-09-29
+
+### Added
+- **"Scan own machine" checkbox** on each tool screen. When ticked, the scan runs
+  against this machine (`127.0.0.1`) regardless of the target box, which is locked
+  to make it unambiguous. Enforced at scan launch ([gui_app.pyw](gui_app.pyw)).
+- **Per-tool "Use Case" info panel.** Every tool screen (and the DDoS screen) now
+  has an `ℹ USE CASE` button that opens a themed panel explaining the tool's
+  purpose, when to use it, how to use it, its capabilities, and its caveats/cautions
+  — including an authorization reminder. Content lives in a new [tool_docs.py](tool_docs.py)
+  module (33 tools documented) and is bundled into the build.
+
+### Changed
+- `build.py`: bundle `tool_docs.py` (and add it as a hidden import) so the Use Case
+  panel works in the frozen executable.
+
+---
+
 ## [1.5.0] - 2026-09-29
 
 ### Added

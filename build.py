@@ -50,6 +50,7 @@ DATA_FILES = [
     ("safe_executor.py", "."),
     ("tool_checker.py", "."),
     ("tool_simulator.py", "."),
+    ("tool_docs.py", "."),
 ]
 
 # Hidden imports (modules that PyInstaller might miss)
@@ -57,6 +58,7 @@ HIDDEN_IMPORTS = [
     "PIL",
     "PIL._imaging",
     "dotenv",
+    "tool_docs",
     "nacl",
     "nacl.signing",
     "nacl.encoding",
