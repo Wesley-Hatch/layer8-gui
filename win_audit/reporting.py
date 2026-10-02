@@ -27,21 +27,58 @@ def write_csv(report: AuditReport, path: str) -> str:
     return str(p)
 
 
-def write_json(report: AuditReport, path: str) -> str:
+def write_json(report: AuditReport, path: str, include_compliance: bool = True) -> str:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
+    d = report.to_dict()
+    if include_compliance:
+        try:
+            from .compliance import build_compliance
+            d["compliance"] = build_compliance(report)
+        except Exception:
+            pass
     with p.open("w", encoding="utf-8") as fh:
-        json.dump(report.to_dict(), fh, indent=2, ensure_ascii=False)
+        json.dump(d, fh, indent=2, ensure_ascii=False)
     return str(p)
 
 
-def write_reports(report: AuditReport, prefix: str, fmt: str) -> List[str]:
-    """fmt in {'csv','json','both'}. Returns the paths written."""
+COMPLIANCE_CSV_COLUMNS = [
+    "framework", "control", "name", "status", "checks_mapped", "issues", "failing_checks",
+]
+
+
+def write_compliance_csv(report: AuditReport, path: str) -> str:
+    from .compliance import build_compliance, FRAMEWORKS
+    comp = build_compliance(report)
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w", newline="", encoding="utf-8-sig") as fh:
+        writer = csv.DictWriter(fh, fieldnames=COMPLIANCE_CSV_COLUMNS, extrasaction="ignore")
+        writer.writeheader()
+        for fw in FRAMEWORKS:
+            for r in comp.get(fw, []):
+                writer.writerow({
+                    "framework": fw,
+                    "control": r["control"],
+                    "name": r["name"],
+                    "status": r["status"],
+                    "checks_mapped": r["checks"],
+                    "issues": r["issues"],
+                    "failing_checks": "; ".join(r["failing_checks"]),
+                })
+    return str(p)
+
+
+def write_reports(report: AuditReport, prefix: str, fmt: str, compliance: bool = True) -> List[str]:
+    """fmt in {'csv','json','both'}. Returns the paths written. When `compliance`
+    is set, also writes a <prefix>.compliance.csv and embeds compliance in the JSON."""
     written: List[str] = []
     if fmt in ("csv", "both"):
         written.append(write_csv(report, prefix + ".csv"))
     if fmt in ("json", "both"):
-        written.append(write_json(report, prefix + ".json"))
+        written.append(write_json(report, prefix + ".json", include_compliance=compliance))
+    if compliance and fmt in ("csv", "both"):
+        written.append(write_compliance_csv(report, prefix + ".compliance.csv"))
     return written
 
 
@@ -68,5 +105,12 @@ def summary_lines(report: AuditReport) -> List[str]:
     return lines
 
 
-def print_summary(report: AuditReport) -> None:
-    print("\n".join(summary_lines(report)))
+def print_summary(report: AuditReport, compliance: bool = True) -> None:
+    lines = summary_lines(report)
+    if compliance:
+        try:
+            from .compliance import build_compliance, compliance_summary_lines
+            lines += compliance_summary_lines(build_compliance(report))
+        except Exception:
+            pass
+    print("\n".join(lines))

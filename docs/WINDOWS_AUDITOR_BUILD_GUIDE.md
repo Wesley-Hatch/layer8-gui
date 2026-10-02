@@ -41,6 +41,11 @@ evidence, and a remediation for each finding.
     13. **Active Directory attack surface** (Kerberoast, AS-REP roast, delegation, MachineAccountQuota, LAPS, domain policy, privileged groups) — via built-in ADSI, no RSAT
 - Every finding is tagged with its **MITRE ATT&CK** technique id.
 - Writes results to **CSV and/or JSON**.
+- **Compliance-mapped reporting** (on by default): maps every finding to the
+  relevant **CJIS Security Policy**, **CIS Controls v8**, and **NIST 800-53**
+  controls, and rolls them up per control (PASS / REVIEW / FAIL). Emitted as a
+  console summary, a `<prefix>.compliance.csv`, and a `compliance` block in the
+  JSON. Disable with `--no-compliance`. (`win_audit/compliance.py`)
 - Returns a **non-zero exit code when any check FAILs** — so it drops cleanly
   into scheduled/automated runs.
 
@@ -258,7 +263,8 @@ Defender exclusions, task-binary ACLs, WSUS, SChannel, delegation, MAQ) is now
 - **AD CS (ESC1-ESC8)** certificate-template misconfig enumeration on CAs.
 - **Firewall rule review** — flag overly broad inbound allow rules (any/any).
 - **Vulnerable-driver (BYOVD)** presence check against the MS blocklist.
-- **CIS/STIG mapping** per finding for formal compliance reports.
+- **STIG mapping** and printable per-control compliance PDF/HTML (CJIS/CIS/NIST
+  mapping already ships — see `win_audit/compliance.py`).
 - **HTML report writer** (reuse the JSON) and a Layer8 GUI "Windows Audit" panel.
 - **Multi-host sweep** — accept a CIDR/host list, fan out over WinRM with a
   thread pool, one CSV/JSON per host plus a roll-up.

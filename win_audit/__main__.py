@@ -92,6 +92,9 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Output format (default both).")
     out.add_argument("--out", help="Output path prefix (extension added). Default: reports/<host>-<ts>.")
     out.add_argument("--quiet", action="store_true", help="Suppress per-check progress.")
+    out.add_argument("--no-compliance", action="store_true",
+                     help="Skip CJIS/CIS/NIST compliance mapping (on by default): "
+                          "no <prefix>.compliance.csv and no compliance block in the JSON.")
 
     p.add_argument("--list-checks", action="store_true", help="List all checks and exit.")
     p.add_argument("--yes", action="store_true",
@@ -178,8 +181,9 @@ def main(argv=None) -> int:
     report = runner.run()
 
     prefix = args.out or _default_prefix(target)
-    written = write_reports(report, prefix, args.format)
-    print_summary(report)
+    include_compliance = not args.no_compliance
+    written = write_reports(report, prefix, args.format, compliance=include_compliance)
+    print_summary(report, compliance=include_compliance)
     print("\nReports written:")
     for w in written:
         print(f"  {w}")

@@ -49,7 +49,6 @@ DATA_FILES = [
     ("input_validator.py", "."),
     ("safe_executor.py", "."),
     ("tool_checker.py", "."),
-    ("tool_simulator.py", "."),
     ("tool_docs.py", "."),
 ]
 

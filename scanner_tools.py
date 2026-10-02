@@ -16,7 +16,6 @@ from scapy.all import sniff, conf, send, wrpcap
 from input_validator import InputValidator
 from safe_executor import SafeExecutor
 from tool_checker import ToolChecker
-from tool_simulator import ToolSimulator
 from secure_logger import get_logger
 
 # Set up secure logging
@@ -622,22 +621,15 @@ class ScannerTools:
                 except Exception as e:
                     self.log(f"[!] Error running nmap: {e}", is_error=True)
             else:
-                self.log("[!] nmap not found in PATH. Using Functional Simulation...")
-                sim_output = ToolSimulator.simulate_nmap(target, [t_flag])
-                for line in sim_output.strip().split('\n'):
-                    self.log(f"    {line}")
-                    time.sleep(0.05)
-                
-                self.log("\n[!] Starting Fallback Advanced Port Scan & Service Audit...")
-                
-                # Logic for different scan types
+                self.log("[!] nmap is not installed. Running Layer8's built-in TCP port &")
+                self.log("    service scan instead. For full version detection and NSE vuln")
+                self.log("    scripts install nmap: https://nmap.org/download  (Linux: 'sudo apt install nmap').")
                 if scan_type == "Super sneaky":
-                    self.log("    [SNEAKY] Applying stealthy scan techniques and fragmentation-based evasion...")
-                    time.sleep(1)
-                    self.report_finding({"Type": "Sneaky", "Action": "Fragmentation Evasion", "Status": "Success"})
+                    self.log("    [i] 'Super sneaky' evasion (fragmentation/MTU/scan-delay) needs nmap;")
+                    self.log("        the fallback performs a straight TCP connect scan.")
                 elif scan_type == "Loud":
-                    self.log("    [LOUD] Aggressive discovery initiated. Expecting high noise...")
-                    self.report_finding({"Type": "Loud", "Action": "Aggressive Discovery", "Status": "Active"})
+                    self.log("    [i] 'Loud' NSE scripting needs nmap; the fallback performs a TCP")
+                    self.log("        connect scan plus basic web-header and anonymous-FTP checks.")
 
                 # Ports to scan based on intensity
                 ports_map = {
@@ -1137,95 +1129,79 @@ class ScannerTools:
             return True
         self.run_cmd(self.terminal_command("DirBrute", target, brute_type=brute_type), real_dir_brute, f"DirBrute ({brute_type}) complete.")
 
+    def _grab_banner(self, host, port, timeout=1.2):
+        """Open a TCP port and grab a service banner / version. Returns
+        (is_open, banner_text). Fully local - talks only to the target, no
+        external API. For HTTP(S) it reads the Server/X-Powered-By headers; for
+        other services it reads the greeting banner (SSH/FTP/SMTP/etc.)."""
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        try:
+            if s.connect_ex((host, port)) != 0:
+                return (False, "")
+        except Exception:
+            return (False, "")
+        banner = ""
+        try:
+            if port in (80, 8080, 8000, 8888, 443, 8443):
+                proto = "https" if port in (443, 8443) else "http"
+                try:
+                    r = requests.get(f"{proto}://{host}:{port}", timeout=timeout + 1.5,
+                                     verify=False, allow_redirects=False)
+                    bits = [r.headers.get('Server', ''), r.headers.get('X-Powered-By', '')]
+                    banner = " / ".join(b for b in bits if b) or f"{proto.upper()} {r.status_code}"
+                except Exception:
+                    banner = f"{proto.upper()} (no server header)"
+            else:
+                try:
+                    data = s.recv(256)
+                    banner = data.decode('utf-8', 'ignore').strip()
+                except Exception:
+                    banner = ""
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
+        return (True, banner)
+
     def cve_search(self, target, intensity=3):
         def real_cve_search():
             if not self._validate_target(target):
                 return False
-            self.log(f"[*] Searching for CVEs related to {target} (Intensity: {intensity})...")
+            self.log(f"[*] Service & version fingerprinting on {target} (Intensity: {intensity})...")
+            self.log("[*] Offline: identifies the running services/versions so you can check them")
+            self.log("    for known CVEs. No external API is used (look results up on nvd.nist.gov).")
             self.report_progress(10)
-            
-            # Step 1: Real service discovery (quick port scan)
-            discovered_services = []
-            common_ports = [21, 22, 25, 53, 80, 443, 3306, 3389, 8080]
-            self.log("[*] Identifying active services for targeted CVE lookup...")
-            
-            for p in common_ports:
-                if self.is_stopped(): break
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(0.2)
-                if s.connect_ex((target, p)) == 0:
-                    svc = self.get_service_name(p)
-                    discovered_services.append(svc)
-                    self.log(f"    [+] Found service: {svc} (Port {p})")
-                s.close()
-            
-            self.report_progress(40)
-            
-            # Step 2: Query for CVEs (Real search using CIRCL CVE API)
-            if not discovered_services:
-                discovered_services = ["General"]
-            
-            found_any = False
-            for svc in discovered_services:
-                if self.is_stopped(): break
-                
-                # Map service name to possible product names for better API results
-                lookup_names = [svc]
-                if svc == "HTTP-Proxy": lookup_names = ["apache", "nginx", "httpd"]
-                elif svc == "SSH": lookup_names = ["openssh", "ssh"]
-                elif svc == "FTP": lookup_names = ["vsftpd", "proftpd", "pure-ftpd"]
-                elif svc == "MySQL": lookup_names = ["mysql", "mariadb"]
-                elif svc == "MSSQL": lookup_names = ["sql_server"]
-                
-                self.log(f"[*] Querying CIRCL CVE API for {svc}...")
-                
-                svc_found = False
-                for name in lookup_names:
-                    try:
-                        # CIRCL CVE API search for product
-                        api_url = f"https://cve.circl.lu/api/search/{name.lower()}"
-                        response = requests.get(api_url, timeout=5)
-                        if response.status_code == 200:
-                            cves = response.json()
-                            if isinstance(cves, list) and len(cves) > 0:
-                                # Limit to top 5 most recent CVEs for the service to avoid spamming
-                                limit = min(len(cves), 5)
-                                self.log(f"    [+] Found {len(cves)} CVEs for {name}. Showing top {limit}:")
-                                for i in range(limit):
-                                    cve = cves[i]
-                                    cve_id = cve.get('id', 'Unknown ID')
-                                    summary = cve.get('summary', 'No summary available')
-                                    cvss = cve.get('cvss', 'N/A')
-                                    
-                                    severity = "Low"
-                                    try:
-                                        if float(cvss) >= 9.0: severity = "Critical"
-                                        elif float(cvss) >= 7.0: severity = "High"
-                                        elif float(cvss) >= 4.0: severity = "Medium"
-                                    except: pass
-                                    
-                                    self.log(f"    - {cve_id}: {summary[:100]}... (CVSS: {cvss})")
-                                    self.report_finding({
-                                        "Service": svc, 
-                                        "ID": cve_id, 
-                                        "Severity": severity, 
-                                        "Description": summary,
-                                        "CVSS": str(cvss)
-                                    })
-                                    svc_found = True
-                                    found_any = True
-                                if svc_found: break # Found CVEs for one of the lookup names
-                    except Exception as e:
-                        self.log(f"    [!] API Error for {name}: {str(e)}")
-                
-                if not svc_found:
-                    self.log(f"    [-] No CVEs found for {svc} via API.")
-            
-            if not found_any:
-                self.log("[*] No specific service CVEs found via CIRCL API.")
-                self.log("[*] Target may be hardened or using non-standard versions.")
+
+            port_counts = {1: 8, 2: 12, 3: 20, 4: 40, 5: 60}
+            all_ports = [21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 465, 587,
+                         993, 995, 1433, 1521, 2049, 3306, 3389, 5432, 5900, 6379, 8080, 8000,
+                         8443, 8888, 9200, 11211, 27017]
+            ports = all_ports[:port_counts.get(intensity, 20)]
+            total = len(ports)
+
+            found = []
+            for idx, p in enumerate(ports):
+                if self.is_stopped():
+                    break
+                self.report_progress(10 + int((idx / total) * 85))
+                is_open, banner = self._grab_banner(target, p)
+                if not is_open:
+                    continue
+                svc = self.get_service_name(p)
+                detail = (banner or "").strip()[:200] or "(open; no banner returned)"
+                self.log(f"    [+] {p}/{svc}: {detail}")
+                self.report_finding({"Port": str(p), "Service": svc, "Banner/Version": detail})
+                found.append((p, svc, detail))
 
             self.report_progress(100)
+            if not found:
+                self.log("[-] No open service ports identified (nothing to fingerprint).")
+            else:
+                self.log(f"[+] Fingerprinted {len(found)} service(s). To find known vulnerabilities,")
+                self.log("    search these product/version strings at https://nvd.nist.gov/vuln/search")
+                self.log("    (or run the Nmap tool with -sV / --script vuln if nmap is installed).")
             return True
         self.run_cmd(self.terminal_command("CVE Search", target, intensity=intensity), real_cve_search, "CVE Search complete.")
 

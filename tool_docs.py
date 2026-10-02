@@ -207,16 +207,20 @@ TOOL_DOCS: Dict[str, dict] = {
 
     # ----------------------------- Vuln Scan -----------------------------
     "CVE Search": {
-        "tagline": "Look up known vulnerabilities for a product/version.",
-        "purpose": "Search for published CVEs affecting a given piece of software.",
-        "when": "After you've identified software and versions and want their known issues.",
-        "how": "Enter a product name/keyword (ideally with version) and run.",
+        "tagline": "Fingerprint services/versions so you can look up their CVEs.",
+        "purpose": "Identify the services and version banners running on a target - the real "
+                   "prerequisite for finding known vulnerabilities (CVEs).",
+        "when": "Early assessment, to learn exactly what software/versions a host exposes.",
+        "how": "Enter the target and run. It port-scans and grabs each service's banner / HTTP "
+               "Server header, then lists the product/version strings. Look those up at "
+               "https://nvd.nist.gov/vuln/search (or run the Nmap tool with -sV/--script vuln).",
         "capabilities": [
-            "Keyword/product CVE lookups from its data source",
+            "Real, fully offline service + version fingerprinting (no external API)",
+            "Reads HTTP(S) Server/X-Powered-By headers and raw service banners (SSH/FTP/SMTP/…)",
         ],
         "caveats": [
-            "Only as current as its data feed; needs accurate version input.",
-            "A matching CVE isn't proof the target is exploitable in your context.",
+            "It does not query a CVE database itself - you match the versions against NVD.",
+            "Banners can be hidden or spoofed; absence of a banner isn't proof of safety.",
         ],
     },
     "WPScan-Lite": {

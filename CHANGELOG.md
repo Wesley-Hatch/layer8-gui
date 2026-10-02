@@ -38,6 +38,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.0] - 2026-10-02
+
+### Added
+- **Compliance-mapped reporting (CJIS / CIS v8 / NIST 800-53)** in the Windows
+  auditor. Every finding is mapped to the relevant controls and rolled up per
+  control (PASS / REVIEW / FAIL), emitted as a console summary, a
+  `<prefix>.compliance.csv`, and a `compliance` block in the JSON. On by default;
+  disable with `--no-compliance` ([win_audit/compliance.py](win_audit/compliance.py),
+  reporting + CLI wiring).
+
+### Fixed / Changed (tool legitimacy)
+- **Removed all simulated/fabricated tool output.** Audited every scanner tool.
+  - **Nmap/Nessus:** when nmap isn't installed it no longer prints a fake nmap
+    banner or fabricated "Sneaky/Loud" findings. It now says nmap is missing
+    (with install guidance) and runs the real built-in TCP port + web/FTP scan.
+  - Deleted `tool_simulator.py` (the fake-output module) and its build reference.
+  - **CVE Search:** the CIRCL external CVE API it used is deprecated (HTTP 404),
+    so it depended on a dead external service. Rewritten to real, **fully offline**
+    service/version fingerprinting (TCP banners + HTTP Server headers) with no
+    external API; it lists product/version strings to check against NVD.
+- No tool requires an external/third-party API; every tool does real work against
+  the target or via local tools/libraries. (Other tools audited as already real:
+  port/ping scan, nikto/dirbrute/wpscan, SQLi/NoSQLi/XSS probes, FTP/Hydra brute,
+  subdomains, camera finder, metasploit module suggestions, etc.)
+
+---
+
 ## [1.5.7] - 2026-10-02
 
 ### Added
