@@ -38,6 +38,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.7] - 2026-10-02
+
+### Added
+- **Custom wordlist support for John the Ripper.** John cracking now prefers a
+  user-provided wordlist in `tools/john/wordlists/` (`rockyou.txt` if present,
+  else the first `.txt`/`.lst` there) and falls back to John's bundled
+  `password.lst` ([scanner_tools.py](scanner_tools.py)). Documented how to add
+  rockyou (from Kali or SecLists) in [tools/john/README.md](tools/john/README.md).
+
+---
+
 ## [1.5.6] - 2026-10-02
 
 ### Added

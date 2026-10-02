@@ -1923,6 +1923,29 @@ class ScannerTools:
                         return os.path.join(dirpath, en)
         return None
 
+    def _find_wordlist(self, run_dir):
+        """Pick the wordlist for John. Prefers a user-provided list in
+        tools/john/wordlists/ (rockyou.txt first, else the first .txt/.lst there)
+        so you can drop in a big list like rockyou; falls back to John's bundled
+        run/password.lst. Returns an absolute path, or None."""
+        import sys
+        if getattr(sys, 'frozen', False):
+            app_dir = os.path.dirname(sys.executable)
+        else:
+            app_dir = os.path.dirname(os.path.abspath(__file__))
+        for d in (os.path.join(app_dir, 'tools', 'john', 'wordlists'),
+                  os.path.join(os.getcwd(), 'tools', 'john', 'wordlists')):
+            if not os.path.isdir(d):
+                continue
+            rock = os.path.join(d, 'rockyou.txt')
+            if os.path.isfile(rock):
+                return rock
+            for f in sorted(os.listdir(d)):
+                if f.lower().endswith(('.txt', '.lst')):
+                    return os.path.join(d, f)
+        default = os.path.join(run_dir, 'password.lst')
+        return default if os.path.isfile(default) else None
+
     def john_the_ripper(self, target, intensity=3):
         def real_john():
             import subprocess, re as _re
@@ -1984,9 +2007,10 @@ class ScannerTools:
             cmd = [john]
             if fmt:
                 cmd.append(f"--format={fmt}")
-            wordlist = os.path.join(run_dir, "password.lst")
-            if os.path.isfile(wordlist):
+            wordlist = self._find_wordlist(run_dir)
+            if wordlist:
                 cmd.append(f"--wordlist={wordlist}")
+                self.log(f"[*] Wordlist: {wordlist}")
             if intensity >= 5:
                 cmd.append("--rules=Jumbo")
             elif intensity >= 3:

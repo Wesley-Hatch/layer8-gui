@@ -43,4 +43,30 @@ or build from source: https://github.com/openwall/john
   (`zip2john`, `rar2john`, `ssh2john`, `keepass2john`, …) for turning files into
   crackable hashes.
 
+## Bigger wordlists (rockyou, etc.) — optional
+
+John ships a small default list (`run/password.lst`, ~3.5k words). For serious
+cracking, add a large real-world list:
+
+1. Create a `wordlists` folder here: `tools/john/wordlists/`
+2. Put a list in it named **`rockyou.txt`** (or any `.txt`/`.lst`). Layer8 uses
+   `rockyou.txt` if present, otherwise the first `.txt`/`.lst` it finds there,
+   otherwise falls back to John's bundled `password.lst`.
+
+Where to get `rockyou.txt` (~14 million passwords from the 2009 RockYou breach,
+a standard pentest wordlist):
+- **Kali/Parrot:** already at `/usr/share/wordlists/rockyou.txt.gz`
+  (`gunzip` it, then copy here).
+- **SecLists:** https://github.com/danielmiessler/SecLists →
+  `Passwords/Leaked-Databases/rockyou.txt.tar.gz`
+
+So the final layout is:
+```
+tools/john/JtR/run/john.exe
+tools/john/wordlists/rockyou.txt
+```
+
+> Big lists make cracking much slower — raise the intensity and/or use the
+> Terminate button. The run has a time budget that scales with intensity.
+
 > Authorized use only — crack only hashes you own or are permitted to test.
