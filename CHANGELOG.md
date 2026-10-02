@@ -38,6 +38,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.3] - 2026-10-01
+
+### Added
+- **Install hints for missing tools.** When a command isn't found, the message now
+  tells you where to get it (e.g. nmap, sqlmap, nikto, hydra, masscan, wireshark,
+  metasploit, john, dig, ...) with the download URL and the Linux package command.
+  Hints live in `ToolChecker.INSTALL_HINTS` ([tool_checker.py](tool_checker.py));
+  unknown commands fall back to a generic "install it / check PATH" message.
+  (Third-party tools are intentionally not bundled - most aren't freely
+  redistributable and shipping offensive binaries trips antivirus.)
+
+---
+
 ## [1.5.2] - 2026-10-01
 
 ### Fixed

@@ -2394,8 +2394,11 @@ class ScannerTools:
                 if not tool_path:
                     tool_path = shutil.which(tool)
                 if not tool_path:
-                    self.log(f"[!] Command '{tool}' was not found on this system. "
-                             f"Install it or make sure it is on your PATH.", is_error=True)
+                    from tool_checker import ToolChecker
+                    hint = ToolChecker.get_install_hint(tool)
+                    msg = f"[!] Command '{tool}' was not found on this system (or is not on your PATH)."
+                    msg += f" {hint}" if hint else " Install it and make sure it is on your PATH."
+                    self.log(msg, is_error=True)
                     return False
 
                 # Defense-in-depth: we never invoke a shell (shell=False), but we

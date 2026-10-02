@@ -56,6 +56,37 @@ class ToolChecker:
         'nc': 'Netcat',
     }
 
+    # Where to get the third-party tools the app wraps (and a few common ones a
+    # user might type into Custom Cmd). Shown when a command is not found so the
+    # user knows exactly how to install it rather than guessing. We do NOT bundle
+    # these: most are not freely redistributable, they are large, and shipping
+    # offensive binaries inside the app trips antivirus/SmartScreen.
+    INSTALL_HINTS = {
+        'nmap': "Get it from https://nmap.org/download (Windows installer) or 'sudo apt install nmap' (Linux).",
+        'nikto': "Get it from https://github.com/sullo/nikto or 'sudo apt install nikto' (Linux).",
+        'gobuster': "Download from https://github.com/OJ/gobuster/releases or 'sudo apt install gobuster'.",
+        'sqlmap': "Get it from https://sqlmap.org or 'sudo apt install sqlmap' (Linux).",
+        'wpscan': "Install with 'gem install wpscan' (needs Ruby) or 'sudo apt install wpscan'.",
+        'hydra': "Get it from https://github.com/vanhauser-thc/thc-hydra or 'sudo apt install hydra'.",
+        'msfconsole': "Install Metasploit from https://www.metasploit.com/download or 'sudo apt install metasploit-framework'.",
+        'fping': "Install with 'sudo apt install fping' (Linux) or see https://fping.org.",
+        'masscan': "Build from https://github.com/robertdavidgraham/masscan or 'sudo apt install masscan'.",
+        'wireshark': "Download from https://www.wireshark.org/download.html or 'sudo apt install wireshark'.",
+        'john': "Get John the Ripper from https://www.openwall.com/john/ or 'sudo apt install john'.",
+        'dirb': "Install with 'sudo apt install dirb' (Linux) or see https://github.com/v0re/dirb.",
+        'dig': "On Windows install BIND tools (https://www.isc.org/download/); on Linux 'sudo apt install dnsutils'.",
+        'nc': "Install netcat: 'sudo apt install netcat' (Linux); on Windows try ncat from the Nmap suite.",
+        'ncat': "Ships with the Nmap installer: https://nmap.org/download.",
+        'openssl': "On Windows install from https://slproweb.com/products/Win32OpenSSL.html; on Linux 'sudo apt install openssl'.",
+    }
+
+    @staticmethod
+    def get_install_hint(tool_name: str) -> Optional[str]:
+        """Return a short 'how to install' note for a known tool, else None."""
+        if not tool_name:
+            return None
+        return ToolChecker.INSTALL_HINTS.get(tool_name.strip().lower())
+
     @staticmethod
     def check_all_tools() -> Dict[str, dict]:
         """
