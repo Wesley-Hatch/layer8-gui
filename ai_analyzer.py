@@ -20,25 +20,102 @@ class AIAnalyzer:
     """
 
     PLATFORM_INFO = """
-    Layer8 is a security auditing platform with tools for:
-    - Network: Nmap, Port Scan, Ping Sweep, Sniffer, WiFi Analyzer.
-    - Web: Nikto, DirBrute, WPScan.
-    - Exploitation: Metasploit, SQLMap, Rev Shell, DDoS Tool.
-    - System: Win Audit, LinPeas.
-    
-    Tools often use functional simulation if real binaries (like nmap) are missing.
+    Layer8 is a security auditing platform. All tools do REAL work against the
+    target (no simulated results) and need no external APIs.
     """
 
-    def __init__(self, api_key=None, model="claude-sonnet-4-5"):
+    # Native tools the AI can run via the EXECUTE protocol. Each runs against the
+    # operator-set target. DDoS is intentionally NOT AI-runnable (destructive;
+    # operate it manually). These are the exact names to use after "EXECUTE:".
+    AI_TOOLS = {
+        "port_scan": "TCP port scan of the target",
+        "ping_sweep": "Ping-sweep the target's /24 subnet",
+        "nmap": "Nmap service+vuln scan (uses real nmap; built-in TCP scan if nmap absent)",
+        "nikto": "Web server vulnerability/misconfig scan",
+        "dirbrute": "Directory/file brute force on a web target",
+        "cve_search": "Offline service/version fingerprinting (banners + HTTP headers)",
+        "wpscan": "WordPress detection + plugin enumeration",
+        "subdomains": "Subdomain enumeration via DNS",
+        "ftp_brute": "FTP weak-credential test",
+        "hydra": "Online login brute force (FTP/HTTP)",
+        "sqlmap": "SQL injection probing",
+        "xss_sql": "XSS-to-SQL cross-vector probing",
+        "nosql": "NoSQL injection probing",
+        "db_breach": "Probe for exposed database/API endpoints",
+        "camera_finder": "Discover IP cameras on the subnet",
+        "firewall_audit": "Firewall configuration audit",
+        "win_audit": "Windows configuration audit (local machine)",
+        "metasploit": "Suggest Metasploit modules from open ports",
+        "web_fetch": "Fetch the target's HTTP response headers",
+        "nslookup": "DNS lookup of the target",
+        "full_audit": "Run all core scans against the target",
+    }
+
+    @classmethod
+    def _tools_help(cls):
+        lines = [f"      - {name}: {desc}" for name, desc in cls.AI_TOOLS.items()]
+        return "\n".join(lines)
+
+    @classmethod
+    def _execute_protocol(cls, target):
+        return f"""
+        RUNNING TOOLS (attack/scan the authorized target):
+        You can run Layer8's real tools against the target. To run one, put this on
+        its OWN line, exactly:
+          EXECUTE: <tool_name>
+        Available <tool_name> values:
+{cls._tools_help()}
+        You may also run an installed command-line tool directly, e.g.:
+          EXECUTE: nmap -sV {target}
+        After each run the GUI feeds the output back to you. Chain tools as needed:
+        recon first (port_scan / cve_search / nmap), then targeted tests.
+        Only operate on the authorized target ({target}). Do not fabricate results.
+        When you have enough information, STOP running tools and write a final report
+        with: SUMMARY, FINDINGS (with severity), ATTACK PATH, and REMEDIATION.
+        """
+
+    def __init__(self, api_key=None, model="claude-opus-5-5"):
         self._load_credentials(api_key)
         self.model = model
         self.client = self._init_client()
 
+    @staticmethod
+    def _config_dir():
+        """Per-user config dir where the operator's own API key is persisted."""
+        import platform
+        if platform.system() == "Windows":
+            base = os.path.join(os.getenv("APPDATA", os.path.expanduser("~")), "Layer8")
+        else:
+            base = os.path.join(os.path.expanduser("~"), ".config", "layer8")
+        try:
+            os.makedirs(base, exist_ok=True)
+        except Exception:
+            pass
+        return base
+
+    def save_api_key(self, key):
+        """Persist the operator's own API key so they don't re-enter it each time.
+        Stored in the per-user config dir (their machine, their key)."""
+        key = (key or "").strip()
+        if not key:
+            return False
+        try:
+            with open(os.path.join(self._config_dir(), "claude_api_key.txt"), "w", encoding="utf-8") as f:
+                f.write(key)
+            self.api_key = key
+            os.environ["ANTHROPIC_API_KEY"] = key
+            self.client = self._init_client()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save API key: {e}")
+            return False
+
     def _load_credentials(self, api_key):
         # Load from multiple locations for robustness
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        env_dirs = [base_dir, os.path.join(base_dir, ".env"), os.path.dirname(base_dir)]
-        
+        env_dirs = [base_dir, os.path.join(base_dir, ".env"), os.path.dirname(base_dir),
+                    self._config_dir()]
+
         for d in env_dirs:
             load_dotenv(os.path.join(d, ".env"), override=True)
             key_file = os.path.join(d, "claude_api_key.txt")
@@ -82,33 +159,74 @@ class AIAnalyzer:
         else:
             return self._analyze_locally(history, findings, mode)
 
+    def generate_report(self, target, findings, history, transcript=""):
+        """Produce a written penetration-test report from the session's real
+        findings/history (and optional AI chat transcript). Returns markdown."""
+        data = self._build_data_package(history or [], findings or [])
+        if transcript:
+            data += "\n### AI OPERATOR TRANSCRIPT (excerpt) ###\n" + transcript[-4000:]
+
+        system_prompt = f"""
+        You are the Layer8 AI Security Operator writing a penetration-test report
+        for an AUTHORIZED engagement against: {target or 'the assessed systems'}.
+        Base the report ONLY on the real session data provided - do not invent
+        findings. Produce clean Markdown with these sections:
+        1. Executive Summary
+        2. Scope & Target
+        3. Findings (each: title, severity Critical/High/Medium/Low/Info, evidence, impact)
+        4. Attack Path / Narrative
+        5. Remediation & Recommendations (prioritized)
+        6. Appendix: tools run
+        If the data is thin, say so rather than padding.
+        """
+        if self.client:
+            try:
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=4000,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": [{"type": "text", "text": data}]}],
+                )
+                report = "".join(b.text for b in response.content if hasattr(b, "text"))
+                header = f"# Layer8 Penetration Test Report\n**Target:** {target or 'N/A'}  \n**Generated:** {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                return header + report
+            except Exception as e:
+                return self._local_report(target, findings, history) + f"\n\n[!] AI report error: {e}"
+        return self._local_report(target, findings, history)
+
+    def _local_report(self, target, findings, history):
+        """Report generator that works with no AI connection (rule-based)."""
+        lines = [f"# Layer8 Penetration Test Report (local)",
+                 f"**Target:** {target or 'N/A'}  ",
+                 f"**Generated:** {time.strftime('%Y-%m-%d %H:%M:%S')}", "",
+                 "## Summary",
+                 f"- Tools run: {len(history or [])}",
+                 f"- Findings recorded: {len(findings or [])}", "", "## Findings"]
+        seen = set()
+        for f in (findings or []):
+            s = str(f)
+            if s not in seen:
+                lines.append(f"- {s}")
+                seen.add(s)
+        lines += ["", "## Tools Run"]
+        for item in (history or [])[-30:]:
+            lines.append(f"- [{item.get('time')}] {item.get('cmd')} -> {item.get('status')}")
+        lines += ["", "_No AI connection; this is a raw rule-based report. Add an API key for a full narrative report._"]
+        return "\n".join(lines)
+
     def analyze_domain_target(self, target, findings):
         """Specifically analyzes a target domain/IP for an Admin user."""
         if not target:
             return "No target specified for analysis."
 
         system_prompt = f"""
-        You are the Layer8 Admin AI Analyst.
+        You are the Layer8 AI Security Operator for AUTHORIZED penetration testing.
         {self.PLATFORM_INFO}
-        
-        Your task is to analyze the target: {target}
-        Based on existing findings and common security practices, provide:
-        1. DOMAIN/TARGET OVERVIEW
-        2. POTENTIAL ATTACK VECTORS
-        3. SUGGESTED SCAN COMMANDS (Specific commands to run on this target)
-        4. REMEDIATION STRATEGY
-        
-        Keep suggestions technical and actionable.
-        
-        AUTONOMOUS COMMAND EXECUTION:
-        You can request to run any security command available on the platform.
-        To run a command, you MUST use the following format on a new line:
-        EXECUTE: [command]
-        
-        If you have found a definitive answer or enough information, STOP and present your findings. Do not suggest more commands if the analysis is complete. To save tokens, be as direct as possible.
-        
-        Example:
-        EXECUTE: nmap -sV {target}
+
+        Target: {target}
+        Assess it: run reconnaissance, then targeted tests, using the tools below.
+        {self._execute_protocol(target)}
+        Be direct and technical to save tokens.
         """
 
         user_prompt = f"TARGET: {target}\n\nEXISTING FINDINGS:\n"
@@ -124,7 +242,7 @@ class AIAnalyzer:
                 # Use explicit content blocks for better compatibility and to avoid 400 errors
                 response = self.client.messages.create(
                     model=self.model,
-                    max_tokens=1500,
+                    max_tokens=4000,
                     system=system_prompt,
                     messages=[{"role": "user", "content": [{"type": "text", "text": user_prompt}]}]
                 )
@@ -141,24 +259,12 @@ class AIAnalyzer:
             return "No target specified for analysis.", chat_history
 
         system_prompt = f"""
-        You are the Layer8 Admin AI Assistant.
+        You are the Layer8 AI Security Operator for AUTHORIZED penetration testing.
         {self.PLATFORM_INFO}
-        
-        Your task is to assist the Admin in analyzing the target: {target}
-        
-        AUTONOMOUS COMMAND EXECUTION:
-        You can request to run any security command available on the platform (nmap, nikto, gobuster, sqlmap, etc.).
-        To run a command, you MUST use the following format on a new line:
-        EXECUTE: [command]
-        
-        If you have found a definitive answer or enough information, STOP and present your findings. Do not suggest more commands if the analysis is complete. To save tokens, be as direct as possible.
-        
-        Example:
-        I will now check for open ports.
-        EXECUTE: nmap -sV {target}
-        
-        The GUI will capture the output and provide it to you in the next turn.
-        
+
+        You assist the operator in assessing the target: {target}
+        {self._execute_protocol(target)}
+
         CURRENT FINDINGS FOR CONTEXT:
         """
         seen = set()
@@ -190,7 +296,7 @@ class AIAnalyzer:
 
                 response = self.client.messages.create(
                     model=self.model,
-                    max_tokens=1500,
+                    max_tokens=4000,
                     system=system_prompt,
                     messages=formatted_messages
                 )
@@ -255,7 +361,7 @@ class AIAnalyzer:
             # Use explicit content blocks for better compatibility and to avoid 400 errors
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=1500,
+                max_tokens=4000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": [{"type": "text", "text": user_prompt}]}]
             )

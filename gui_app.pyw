@@ -1681,7 +1681,7 @@ def main(db_available=None, db_error=None):
             
             # State
             chat_history = []
-            analyzer = AIAnalyzer(model="claude-sonnet-4-5") # Admin gets the better model
+            analyzer = AIAnalyzer(model="claude-opus-5-5") # Admin gets the better model
             send_btn = None
             start_analysis_btn = None
             stop_btn = None
@@ -1744,19 +1744,26 @@ def main(db_available=None, db_error=None):
 
             # Model Dropdown
             tk.Label(settings_frame, text="MODEL:", bg="#121212", fg="#aaaaaa", font=("Segoe UI", 7, "bold")).pack(side="left", padx=(10, 0))
-            admin_model_var = tk.StringVar(value="Claude Sonnet 4.5")
+            admin_model_var = tk.StringVar(value="Claude Opus 5.5")
             admin_model_map = {
+                "Claude Opus 5.5": "claude-opus-5-5",
+                "Claude Sonnet 5.5": "claude-sonnet-5-5",
                 "Claude Haiku 4.5": "claude-haiku-4-5",
-                "Claude Sonnet 4.5": "claude-sonnet-4-5",
-                "Claude Opus 4.1": "claude-opus-4-1",
-                "Claude 3.7 Sonnet": "claude-3-7-sonnet-latest",
-                "Claude 3.5 Sonnet": "claude-3-5-sonnet-latest",
-                "Claude 3 Haiku": "claude-3-haiku-20240307"
+                "Claude Opus 4.8": "claude-opus-4-8"
             }
             admin_model_opt = tk.OptionMenu(settings_frame, admin_model_var, *admin_model_map.keys())
             admin_model_opt.config(bg="#1e1e1e", fg="#ffffff", bd=0, highlightthickness=0, activebackground="#333333", font=("Segoe UI", 8))
             admin_model_opt["menu"].config(bg="#1e1e1e", fg="#ffffff", font=("Segoe UI", 8))
             admin_model_opt.pack(side="left", padx=5)
+
+            def save_admin_key():
+                if analyzer.save_api_key(admin_api_key_entry.get().strip()):
+                    append_to_chat("System", "API key saved for future sessions.", "system")
+                else:
+                    append_to_chat("System", "Could not save API key (empty or write error).", "system")
+            tk.Button(settings_frame, text="SAVE KEY", bg="#226622", fg="#ffffff", bd=0,
+                      font=("Segoe UI", 7, "bold"), activebackground="#2a7a2a", cursor="hand2",
+                      command=save_admin_key).pack(side="left", padx=5)
 
             # Auto-load key
             try:
@@ -1808,7 +1815,13 @@ def main(db_available=None, db_error=None):
                     active_scanner.log_callback = temp_log
                     
                     try:
-                        active_scanner.custom_command(target, cmd)
+                        # Prefer a native Layer8 tool if the AI named one (e.g.
+                        # "port_scan", "nikto", "win_audit"); otherwise run it as a
+                        # command-line tool via custom_command. (DDoS is not exposed
+                        # to ai_run_tool, so the AI cannot auto-launch it.)
+                        first_tok = cmd.split()[0].lower() if cmd.split() else ""
+                        if not active_scanner.ai_run_tool(first_tok, target):
+                            active_scanner.custom_command(target, cmd)
                         full_output = "".join(output_lines)
                         
                         def back_to_ai():
@@ -1873,7 +1886,7 @@ def main(db_available=None, db_error=None):
 
                 # Update analyzer settings from UI
                 selected_model_name = admin_model_var.get()
-                analyzer.model = admin_model_map.get(selected_model_name, "claude-sonnet-4-5")
+                analyzer.model = admin_model_map.get(selected_model_name, "claude-opus-5-5")
                 
                 new_key = admin_api_key_entry.get().strip()
                 if new_key and new_key != analyzer.api_key:
@@ -1928,6 +1941,32 @@ def main(db_available=None, db_error=None):
             stop_btn = tk.Button(btn_frame, text="STOP ANALYSIS", bg="#e74c3c", fg="#ffffff", font=("Segoe UI", 9, "bold"), bd=0, padx=20, pady=8, activebackground="#c0392b", cursor="hand2", command=stop_analysis, state="disabled")
             stop_btn.pack(side="left", padx=10)
             
+            def save_report():
+                append_to_chat("System", "Generating report from this session's findings...", "system")
+                def worker():
+                    tgt = target_entry.get().strip()
+                    sc = scanner_instance[0]
+                    transcript = res_text.get("1.0", tk.END)
+                    rep = analyzer.generate_report(tgt, sc.all_findings, sc.history, transcript)
+                    def save_it():
+                        from tkinter import filedialog
+                        fpath = filedialog.asksaveasfilename(
+                            defaultextension=".md",
+                            filetypes=[("Markdown", "*.md"), ("Text", "*.txt"), ("All", "*.*")],
+                            initialfile=f"Layer8_Report_{(tgt or 'session').replace('.', '_')}.md")
+                        if fpath:
+                            try:
+                                with open(fpath, "w", encoding="utf-8") as f:
+                                    f.write(rep)
+                                append_to_chat("System", f"Report saved: {fpath}", "system")
+                            except Exception as e:
+                                append_to_chat("System", f"Save failed: {e}", "system")
+                        else:
+                            append_to_chat("Assistant", rep, "ai")
+                    root.after(0, save_it)
+                threading.Thread(target=worker, daemon=True).start()
+            tk.Button(btn_frame, text="SAVE REPORT", bg="#8e44ad", fg="#ffffff", font=("Segoe UI", 9, "bold"), bd=0, padx=20, pady=8, activebackground="#9b59b6", cursor="hand2", command=save_report).pack(side="left", padx=10)
+
             tk.Button(btn_frame, text="CLEAR CHAT", bg="#333333", fg="#ffffff", font=("Segoe UI", 9, "bold"), bd=0, padx=20, pady=8, activebackground="#444444", cursor="hand2", command=lambda: [chat_history.clear(), res_text.config(state="normal"), res_text.delete("1.0", tk.END), append_to_chat("Assistant", "Chat history cleared.", "ai")]).pack(side="left", padx=10)
             
             tk.Button(btn_frame, text="CLOSE", bg="#c0392b", fg="#ffffff", font=("Segoe UI", 9, "bold"), bd=0, padx=20, pady=8, activebackground="#e74c3c", cursor="hand2", command=admin_ai_win.destroy).pack(side="right", padx=20)
@@ -1990,14 +2029,12 @@ def main(db_available=None, db_error=None):
             model_row = tk.Frame(settings_card, bg="#121212")
             model_row.pack(fill="x", pady=5)
             tk.Label(model_row, text="CLAUDE MODEL:", bg="#121212", fg="#aaaaaa", font=("Segoe UI", 7, "bold")).pack(side="left")
-            model_var = tk.StringVar(value="Claude Haiku 4.5")
+            model_var = tk.StringVar(value="Claude Opus 5.5")
             model_map = {
+                "Claude Opus 5.5": "claude-opus-5-5",
+                "Claude Sonnet 5.5": "claude-sonnet-5-5",
                 "Claude Haiku 4.5": "claude-haiku-4-5",
-                "Claude Sonnet 4.5": "claude-sonnet-4-5",
-                "Claude Opus 4.1": "claude-opus-4-1",
-                "Claude 3.7 Sonnet": "claude-3-7-sonnet-latest",
-                "Claude 3.5 Sonnet": "claude-3-5-sonnet-latest",
-                "Claude 3 Haiku": "claude-3-haiku-20240307",
+                "Claude Opus 4.8": "claude-opus-4-8",
                 "Custom ID": "CUSTOM"
             }
             model_options = list(model_map.keys())
@@ -2247,11 +2284,14 @@ def main(db_available=None, db_error=None):
                                activebackground="#333333", activeforeground="#00ff00", bd=0,
                                font=("Segoe UI", 8, "bold"), padx=8, pady=4, command=show_ai_feedback_screen, cursor="hand2")
             ai_btn.pack(side="left", padx=(6, 0))
+            # Agentic AI operator (runs tools + writes reports) - available to all
+            # users with their own API key.
+            operator_ai_btn = tk.Button(hdr_btns, text="AI OPERATOR", bg="#1e1e1e", fg="#e67e22",
+                                        activebackground="#333333", activeforeground="#e67e22", bd=0,
+                                        font=("Segoe UI", 8, "bold"), padx=8, pady=4, command=show_admin_ai_analyst, cursor="hand2")
+            operator_ai_btn.pack(side="left", padx=(6, 0))
             if is_admin:
-                admin_ai_btn = tk.Button(hdr_btns, text="AI ANALYST", bg="#1e1e1e", fg="#e67e22",
-                                         activebackground="#333333", activeforeground="#e67e22", bd=0,
-                                         font=("Segoe UI", 8, "bold"), padx=8, pady=4, command=show_admin_ai_analyst, cursor="hand2")
-                admin_ai_btn.pack(side="left", padx=(6, 0))
+                admin_btn_placeholder = None
                 admin_btn = tk.Button(hdr_btns, text="ADMIN PANEL", bg="#1e1e1e", fg="#f1c40f",
                                       activebackground="#333333", activeforeground="#f1c40f", bd=0,
                                       font=("Segoe UI", 8, "bold"), padx=8, pady=4, command=show_admin_panel, cursor="hand2")

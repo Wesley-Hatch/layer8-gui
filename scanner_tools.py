@@ -571,6 +571,43 @@ class ScannerTools:
         self.log(f"Failed: {fail_count}", is_error=(fail_count > 0))
         self.log("="*30 + "\n")
 
+    def ai_run_tool(self, name, target, intensity=3):
+        """Dispatch an AI-requested native tool by name against the target.
+
+        Each mapped call runs the real tool synchronously (via run_cmd), so the
+        caller's log_callback captures its output. DDoS is intentionally NOT
+        exposed here - it is destructive and must be operated manually. Returns
+        True if a known tool ran, False if the name is unknown."""
+        n = (name or "").strip().lower()
+        dispatch = {
+            "port_scan": lambda: self.port_scan(target, intensity),
+            "ping_sweep": lambda: self.ping_sweep(target, intensity),
+            "nmap": lambda: self.nmap_nessus_scan(target, intensity),
+            "nikto": lambda: self.nikto_lite(target, intensity),
+            "dirbrute": lambda: self.dir_brute(target),
+            "cve_search": lambda: self.cve_search(target, intensity),
+            "wpscan": lambda: self.wpscan_lite(target, intensity),
+            "subdomains": lambda: self.subdomain_scan(target, intensity),
+            "ftp_brute": lambda: self.ftp_brute(target, intensity),
+            "hydra": lambda: self.hydra_brute(target, intensity),
+            "sqlmap": lambda: self.sql_map_lite(target),
+            "xss_sql": lambda: self.xss_to_sql(target),
+            "nosql": lambda: self.nosql_injector(target),
+            "db_breach": lambda: self.db_breacher(target),
+            "camera_finder": lambda: self.security_camera_finder(target, intensity),
+            "firewall_audit": lambda: self.firewall_audit(target),
+            "win_audit": lambda: self.win_audit(intensity),
+            "metasploit": lambda: self.metasploit_meterpreter(target),
+            "web_fetch": lambda: self.custom_command(target, "curl -I {target}"),
+            "nslookup": lambda: self.custom_command(target, "nslookup {target}"),
+            "full_audit": lambda: self.full_audit(target, intensity),
+        }
+        fn = dispatch.get(n)
+        if not fn:
+            return False
+        fn()
+        return True
+
     def nmap_nessus_scan(self, target, intensity=3, scan_type="Standard"):
         def real_nmap():
             # Validate target

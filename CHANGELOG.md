@@ -38,6 +38,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2026-10-02
+
+### Added
+- **AI Operator (bring-your-own-key).** The agentic AI assistant is now available
+  to all users (not just admins) via the new **AI OPERATOR** button, with the AI
+  FEEDBACK assistant unchanged.
+  - **Own API key:** enter your Anthropic API key and **Save Key** to persist it
+    in your per-user config dir (`%APPDATA%/Layer8`) for future sessions.
+  - **Feedback:** the AI reviews the session's real findings and advises.
+  - **Runs the real tools:** the AI can drive Layer8's **native tools**
+    (`port_scan`, `nikto`, `cve_search`, `win_audit`, `sqlmap`, `hydra`, … via
+    `scanner.ai_run_tool`) against the operator-set target, not just CLI commands;
+    each run's output is fed back to the AI. Commands require per-use confirmation
+    unless Autonomous mode is on; **DDoS is intentionally not AI-runnable**.
+  - **Writes a report:** **Save Report** generates a full Markdown pentest report
+    (Executive Summary, Findings w/ severity, Attack Path, Remediation) from the
+    session's real data and saves it to a file; works offline (rule-based) without
+    a key.
+  - Current model IDs (`claude-opus-5-5` default, `claude-sonnet-5-5`,
+    `claude-haiku-4-5`, `claude-opus-4-8`); removed stale IDs that would fail API
+    calls. Updated the AI's platform knowledge (no simulated tools).
+
+---
+
 ## [1.6.0] - 2026-10-02
 
 ### Added
