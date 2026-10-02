@@ -38,6 +38,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.6] - 2026-10-02
+
+### Added
+- **Real John the Ripper integration.** The "John The Ripper" tool previously ran
+  a ~30-line Python MD5 matcher with a tiny hardcoded wordlist. It now drives the
+  **actual John the Ripper (jumbo)** when present: locates `john` on PATH or under
+  a `tools/john` folder next to the app, runs wordlist + rules cracking, parses
+  `john --show`, and reports each cracked credential ([scanner_tools.py](scanner_tools.py)).
+  - **Format-aware:** type a format in the tool's box for raw hashes (e.g. Raw-MD5,
+    raw-sha1, NT) — auto-detect on bare hashes can pick LM and never crack.
+  - **Time-budgeted** (scales with intensity) so it can never hang the GUI; the
+    Terminate button also works. No longer requires a target.
+  - Clear install guidance when John is missing; updated the Use Case panel and the
+    install hint. John is **not bundled** (large, GPL, AV-flagged) — download the
+    official `winX64_1_JtR.zip` from openwall/john-packages into `tools/john`
+    (see [tools/john/README.md](tools/john/README.md)).
+
+### Fixed
+- **Help always showed v1.4.2.** `gui_app.pyw` passed a hardcoded `current_version`
+  that was never bumped per release. It now reads the version from `version.json`
+  (which `build.py` writes from the git tag and ships next to the executable), so
+  Help, About and the updater always reflect the actual release and stop
+  re-prompting for updates immediately after updating ([gui_app.pyw](gui_app.pyw)).
+
+---
+
 ## [1.5.5] - 2026-10-01
 
 ### Fixed

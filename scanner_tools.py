@@ -1887,75 +1887,166 @@ class ScannerTools:
         self.run_cmd(self.terminal_command("NoSQL Injector", target, payload_list=payload_list), real_nosql, "NoSQL injection scan complete.")
 
 
+    def _find_john(self):
+        """Locate a real John the Ripper 'john' executable.
+
+        Search order:
+          1) on PATH (e.g. Linux 'sudo apt install john', or added to PATH)
+          2) a bundled/user-provided jumbo package under <app>/tools/john
+             (the official openwall 'winX64_1_JtR' package extracts a 'run' dir
+             containing john.exe + wordlists + rules + the *2john converters)
+        Returns the absolute path to the executable, or None.
+        """
+        import shutil, sys
+        p = shutil.which('john')
+        if p:
+            return p
+        if getattr(sys, 'frozen', False):
+            app_dir = os.path.dirname(sys.executable)
+        else:
+            app_dir = os.path.dirname(os.path.abspath(__file__))
+        exe_names = ('john.exe',) if os.name == 'nt' else ('john',)
+        roots = [
+            os.path.join(app_dir, 'tools', 'john'),
+            os.path.join(os.getcwd(), 'tools', 'john'),
+        ]
+        for root in roots:
+            if not os.path.isdir(root):
+                continue
+            for en in exe_names:  # prefer the canonical run/ location
+                direct = os.path.join(root, 'run', en)
+                if os.path.isfile(direct):
+                    return direct
+            for dirpath, _dirs, files in os.walk(root):
+                for en in exe_names:
+                    if en in files:
+                        return os.path.join(dirpath, en)
+        return None
+
     def john_the_ripper(self, target, intensity=3):
         def real_john():
-            self.log(f"[*] Starting John The Ripper (Real MD5 Brute Force) on {target} (Intensity: {intensity})...")
+            import subprocess, re as _re
+            self.log(f"[*] Starting John the Ripper (Intensity: {intensity})...")
             self.report_progress(5)
-            
-            # Load hashes from hashes.txt if it exists, otherwise use defaults
-            hashes = []
-            if os.path.exists("hashes.txt"):
-                self.log("[*] Found hashes.txt. Loading target hashes...")
+
+            john = self._find_john()
+            if not john:
+                self.log("[!] John the Ripper was not found.", is_error=True)
+                self.log("    Install the real tool to enable full cracking:")
+                self.log("    1) Download 'winX64_1_JtR.zip' from")
+                self.log("       https://github.com/openwall/john-packages/releases/latest")
+                self.log("    2) Extract it so that  tools\\john\\run\\john.exe  sits next to Layer8-GUI.exe")
+                self.log("    (Linux: 'sudo apt install john', or build from https://github.com/openwall/john)")
+                return False
+
+            run_dir = os.path.dirname(john)
+            self.log(f"[*] Using John: {john}")
+
+            # The GUI's input box is optional for this tool and does double duty:
+            #   - a path to a hash file   -> use it as the hashes to crack
+            #   - otherwise a format name -> passed as --format (e.g. Raw-MD5, NT,
+            #     raw-sha1, sha512crypt). Leave it blank to let John auto-detect.
+            fmt = None
+            hash_file = None
+            tgt = (target or "").strip()
+            if tgt and os.path.isfile(tgt):
+                hash_file = os.path.abspath(tgt)
+            elif tgt:
+                fmt = tgt
+            if not hash_file:
+                for cand in ('hashes.txt', os.path.join(os.getcwd(), 'hashes.txt')):
+                    if os.path.isfile(cand):
+                        hash_file = os.path.abspath(cand)
+                        break
+            if not hash_file:
+                self.log("[!] No hash file found.", is_error=True)
+                self.log("    Create 'hashes.txt' (one hash per line, or 'user:hash') next to the app,")
+                self.log("    or type a full path to a hash file in the box, then run again.")
+                return False
+            self.log(f"[*] Hash file: {hash_file}")
+
+            # Bare raw hashes (md5/sha1/sha256) auto-detect ambiguously - John may
+            # pick LM and never crack, running until the time budget. Nudge the user.
+            if not fmt:
                 try:
-                    with open("hashes.txt", "r") as f:
-                        for line in f:
-                            line = line.strip()
-                            if not line: continue
-                            if ":" in line:
-                                user, h = line.split(":", 1)
-                                hashes.append((user.strip(), h.strip()))
-                            else:
-                                hashes.append((f"User_{len(hashes)+1}", line))
-                    self.log(f"    [+] Loaded {len(hashes)} hashes from file.")
-                except Exception as e:
-                    self.log(f"    [!] Error reading hashes.txt: {e}")
-            
-            if not hashes:
-                self.log("[*] No hashes.txt found. Using default example hashes...")
-                hashes = [
-                    ("admin", "5f4dcc3b5aa765d61d8327deb882cf99"), # password
-                    ("user", "098f6bcd4621d373cade4e832627b4f6"),  # test
-                    ("guest", "81dc9bdb52d04dc20036dbd8313ed055") # 1234
-                ]
-            
-            # Real wordlist
-            wordlist = ["password", "123456", "admin", "1234", "qwerty", "login", "test", "welcome", "pass", "shadow"]
-            # Scale wordlist based on intensity
-            if intensity >= 2:
-                wordlist += ["root", "toor", "monkey", "letmein", "12345678", "12345", "111111"]
-            if intensity >= 3:
-                wordlist += ["p@ssword", "admin123", "password123", "dragon", "football", "baseball"]
-            if intensity >= 4:
-                wordlist += ["superman", "batman", "iloveyou", "princess", "yellow", "orange"]
+                    with open(hash_file, "r", encoding="utf-8", errors="ignore") as hf:
+                        sample = [ln.strip().split(":")[-1] for ln in hf if ln.strip()][:5]
+                    if sample and all(_re.fullmatch(r'[0-9a-fA-F]{32,64}', h) for h in sample):
+                        self.log("[!] These look like raw hashes. For correct, fast results, type the")
+                        self.log("    format in the box, e.g. Raw-MD5, raw-sha1, raw-sha256, or NT.")
+                except Exception:
+                    pass
+            else:
+                self.log(f"[*] Format: {fmt}")
+            self.report_progress(15)
+
+            # Build the command; intensity scales effort.
+            cmd = [john]
+            if fmt:
+                cmd.append(f"--format={fmt}")
+            wordlist = os.path.join(run_dir, "password.lst")
+            if os.path.isfile(wordlist):
+                cmd.append(f"--wordlist={wordlist}")
             if intensity >= 5:
-                # Add more or even try to download a small list if we were really crazy, 
-                # but for now let's just use a larger local set
-                wordlist += [f"pass{i}" for i in range(100)] + [f"admin{i}" for i in range(100)]
+                cmd.append("--rules=Jumbo")
+            elif intensity >= 3:
+                cmd.append("--rules")
+            cmd.append(hash_file)
 
-            self.log(f"[*] Loaded {len(wordlist)} words. Testing against {len(hashes)} target hashes...")
-            
-            found_count = 0
-            total_work = len(wordlist)
-            for idx, word in enumerate(wordlist):
-                if self.is_stopped(): break
-                if idx % 10 == 0:
-                    self.report_progress(10 + int((idx / total_work) * 85))
-                
-                # Real MD5 hashing
-                h = hashlib.md5(word.encode()).hexdigest()
-                
-                for user, target_hash in hashes:
-                    if h.lower() == target_hash.lower():
-                        self.log(f"[!!!] SUCCESS: Cracked {user} -> {word}")
-                        self.report_finding({"User": user, "Pass": word, "Hash": target_hash, "Type": "MD5", "Status": "CRACKED"})
-                        found_count += 1
-                
-                if intensity < 4 and idx % 20 == 0: 
-                    time.sleep(0.01) # Very slight pause for UI responsiveness
+            # Hard time budget so the GUI can never hang (the Terminate button also works).
+            budget = {1: 60, 2: 120, 3: 300, 4: 600, 5: 900}.get(int(intensity), 300)
+            self.log(f"[*] Running (max {budget}s): {' '.join(cmd)}")
+            try:
+                import time as _time
+                deadline = _time.time() + budget
+                proc = subprocess.Popen(cmd, cwd=run_dir, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, text=True, shell=False)
+                while True:
+                    line = proc.stdout.readline()
+                    if not line and proc.poll() is not None:
+                        break
+                    if self.is_stopped():
+                        proc.terminate()
+                        self.log("[!] John terminated by user.")
+                        break
+                    if _time.time() > deadline:
+                        proc.terminate()
+                        self.log(f"[!] Time budget ({budget}s) reached; stopping. Showing results so far.")
+                        break
+                    if line.strip():
+                        self.log(f"    {line.rstrip()}")
+                try:
+                    proc.wait(timeout=5)
+                except Exception:
+                    proc.kill()
+                self.report_progress(80)
 
-            self.report_progress(100)
-            self.log(f"[+] Password cracking finished. Found {found_count} matches.")
-            return True
+                # Show cracked results from John's pot file.
+                show_cmd = [john, "--show"]
+                if fmt:
+                    show_cmd.append(f"--format={fmt}")
+                show_cmd.append(hash_file)
+                show = subprocess.run(show_cmd, cwd=run_dir, capture_output=True, text=True)
+                cracked = 0
+                for line in show.stdout.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if _re.match(r'^\d+\s+password', line):
+                        self.log(f"[*] {line}")
+                        continue
+                    if ":" in line:
+                        user, pw = line.split(":", 1)
+                        if pw:
+                            self.report_finding({"User": user, "Pass": pw, "Status": "CRACKED"})
+                            self.log(f"[!!!] Cracked: {user} -> {pw}")
+                            cracked += 1
+                self.report_progress(100)
+                self.log(f"[+] John finished. {cracked} credential(s) cracked.")
+                return True
+            except Exception as e:
+                self.log(f"[!] John execution error: {e}", is_error=True)
+                return False
         self.run_cmd(self.terminal_command("John The Ripper", target, intensity=intensity), real_john, "John The Ripper cracking finished.")
 
     def burp_suite_link(self, target, intensity=3):

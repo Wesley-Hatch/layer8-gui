@@ -72,7 +72,9 @@ class ToolChecker:
         'fping': "Install with 'sudo apt install fping' (Linux) or see https://fping.org.",
         'masscan': "Build from https://github.com/robertdavidgraham/masscan or 'sudo apt install masscan'.",
         'wireshark': "Download from https://www.wireshark.org/download.html or 'sudo apt install wireshark'.",
-        'john': "Get John the Ripper from https://www.openwall.com/john/ or 'sudo apt install john'.",
+        'john': "Download 'winX64_1_JtR.zip' from https://github.com/openwall/john-packages/releases/latest "
+                "and extract it to a 'tools\\john' folder next to the app (so tools\\john\\run\\john.exe exists); "
+                "Linux: 'sudo apt install john'.",
         'dirb': "Install with 'sudo apt install dirb' (Linux) or see https://github.com/v0re/dirb.",
         'dig': "On Windows install BIND tools (https://www.isc.org/download/); on Linux 'sudo apt install dnsutils'.",
         'nc': "Install netcat: 'sudo apt install netcat' (Linux); on Windows try ncat from the Nmap suite.",

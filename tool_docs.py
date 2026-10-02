@@ -416,16 +416,29 @@ TOOL_DOCS: Dict[str, dict] = {
 
     # ----------------------------- Password -----------------------------
     "John The Ripper": {
-        "tagline": "Crack password hashes to test their strength.",
-        "purpose": "Attempt to recover passwords from hashes to gauge password strength/policy.",
-        "when": "Auditing captured hashes or validating password policy you're authorized to test.",
-        "how": "Provide the hashes/target and run; recovered passwords are reported.",
+        "tagline": "Crack password hashes with the real John the Ripper (jumbo).",
+        "purpose": "Run the full John the Ripper to recover passwords from hashes and gauge "
+                   "password strength/policy. Supports hundreds of hash types and the *2john "
+                   "converters (zip/rar/ssh/keepass/…).",
+        "when": "Auditing captured hashes (shadow files, NTLM/PWDUMP dumps, application hashes) "
+                "or validating password policy you're authorized to test.",
+        "how": "First install John once: download 'winX64_1_JtR.zip' from "
+               "https://github.com/openwall/john-packages/releases/latest and extract it to a "
+               "'tools/john' folder next to the app (so tools/john/.../run/john.exe exists); on "
+               "Linux 'sudo apt install john'. Then put your hashes in 'hashes.txt' next to the "
+               "app (or type a hash-file path in the box) and run. For raw hashes (md5/sha1/NTLM) "
+               "type the format in the box, e.g. Raw-MD5, raw-sha1, NT.",
         "capabilities": [
-            "Dictionary, brute-force, and rule-based cracking of many hash types",
+            "Dictionary + rules (and brute/incremental) cracking of hundreds of hash types",
+            "Auto-detects shadow/NTLM/app hashes; includes the *2john file converters",
+            "Shows recovered passwords; results persist in John's pot file across runs",
         ],
         "caveats": [
+            "Not bundled - you install John once into tools/john (it's large, GPL, and AV-flagged).",
+            "Bare raw hashes auto-detect ambiguously (John may pick LM and never crack) - "
+            "specify the format in the box for those.",
+            "Runs under a time budget that scales with intensity; use Terminate to stop early.",
             "Only crack hashes you're authorized to; store any recovered credentials securely.",
-            "Time- and compute-intensive.",
         ],
     },
     "Hydra Brute": {

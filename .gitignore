@@ -47,6 +47,10 @@ captures/
 scans/
 reports/
 
+# John the Ripper is user-provided, not bundled (see tools/john/README.md)
+tools/john/*
+!tools/john/README.md
+
 # Old / scratch
 _old_desktop_builds/
 

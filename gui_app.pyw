@@ -316,7 +316,27 @@ def main(db_available=None, db_error=None):
     # ADD UPDATER (this creates Help menu with "Check for Updates")
     from updater_gui import add_updater_to_gui
 
-    current_version = "1.5.5"  # UPDATE THIS FOR EACH RELEASE (must match the git tag)
+    # Resolve the running version from version.json, which build.py writes from the
+    # git tag (L8_VERSION) and ships next to the executable. This makes Help and the
+    # updater always reflect the ACTUAL release instead of a stale hardcoded value
+    # (previously every build reported 1.4.2). Falls back to the constant only for
+    # source checkouts that have no built version.json.
+    def _resolve_current_version(fallback="1.5.5"):
+        import json
+        try:
+            base = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) \
+                else os.path.dirname(os.path.abspath(__file__))
+            vpath = os.path.join(base, "version.json")
+            if os.path.isfile(vpath):
+                with open(vpath, "r", encoding="utf-8") as fh:
+                    v = str(json.load(fh).get("version", "")).strip()
+                if v:
+                    return v
+        except Exception:
+            pass
+        return fallback
+
+    current_version = _resolve_current_version()
     updater_gui = add_updater_to_gui(
         root=root,
         menu_bar=menu_bar,
@@ -1288,7 +1308,7 @@ def main(db_available=None, db_error=None):
                 p_list = payload_list_var.get() if is_sql_tool else None
                 c_tmpl = custom_cmd_var.get() if is_custom_cmd else None
 
-                no_target_allowed = ["Win Audit", "WiFi Traffic Analyzer", "Security Camera Finder"]
+                no_target_allowed = ["Win Audit", "WiFi Traffic Analyzer", "Security Camera Finder", "John The Ripper"]
                 if not target and all(n not in tool_name for n in no_target_allowed):
                     messagebox.showwarning("Input Required", "Please enter a target address or domain.")
                     return
