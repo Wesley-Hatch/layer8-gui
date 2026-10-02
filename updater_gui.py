@@ -261,20 +261,77 @@ The application will restart after the update."""
             self._restart_application()
     
     def _restart_application(self):
-        """Restart the application"""
+        """Restart the application after an update.
+
+        IMPORTANT (PyInstaller --onefile): we must launch a BRAND-NEW process with
+        PyInstaller's bootstrap environment variables removed. The running app is
+        the onefile "child", whose environment points (via _MEIPASS2 on PyInstaller
+        <6, or _PYI_* on >=6) at the temporary extraction dir the launcher made.
+        If we restart by inheriting that environment (as os.execl does), the new
+        executable REUSES that old temp dir instead of extracting its own. When the
+        old process exits and deletes the dir, the new process loses its bundled
+        DLLs - e.g. _tkinter / Tcl-Tk - and dies with
+            "ImportError: DLL load failed while importing _tkinter"
+        plus a "Failed to remove temporary directory _MEIxxxx" on the old side.
+
+        So: strip the PyInstaller vars, spawn a detached fresh process, then exit
+        this one so its temp dir can be cleaned up normally.
+        """
         import sys
         import os
-        
-        # Close current application
-        self.parent.destroy()
-        
-        # Restart
-        if getattr(sys, 'frozen', False):
-            # Running as compiled executable
-            os.execl(sys.executable, sys.executable, *sys.argv)
-        else:
-            # Running as script
-            os.execl(sys.executable, sys.executable, *sys.argv)
+        import subprocess
+
+        # Child environment without PyInstaller's onefile bootstrap vars, so the
+        # new executable performs its own fresh extraction.
+        child_env = os.environ.copy()
+        for var in list(child_env):
+            if var.startswith('_MEI') or var.startswith('_PYI'):
+                child_env.pop(var, None)
+        child_env.pop('_MEIPASS2', None)
+
+        try:
+            if getattr(sys, 'frozen', False):
+                # Relaunch the freshly-updated executable itself.
+                args = [sys.executable] + list(sys.argv[1:])
+                work_dir = os.path.dirname(sys.executable) or None
+            else:
+                # Running from source: re-run the script with the interpreter.
+                args = [sys.executable] + list(sys.argv)
+                work_dir = None
+
+            creationflags = 0
+            if os.name == 'nt':
+                # Detach the new process so it is independent of this one and this
+                # process can exit cleanly (letting the old _MEI dir be removed).
+                DETACHED_PROCESS = getattr(subprocess, 'DETACHED_PROCESS', 0x00000008)
+                CREATE_NEW_PROCESS_GROUP = getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0x00000200)
+                creationflags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+
+            subprocess.Popen(
+                args,
+                env=child_env,
+                cwd=work_dir,
+                close_fds=True,
+                creationflags=creationflags,
+            )
+            logger.info("Launched updated application; exiting old process.")
+        except Exception as e:
+            logger.error(f"Failed to relaunch after update: {e}")
+            try:
+                messagebox.showinfo(
+                    "Update Complete",
+                    "The update is installed. Please start Layer8 again to use the new version.",
+                )
+            except Exception:
+                pass
+
+        # Tear down this instance and hard-exit so the onefile launcher can remove
+        # this process's temporary extraction directory.
+        try:
+            self.parent.destroy()
+        except Exception:
+            pass
+        os._exit(0)
     
     def start_background_checker(self, check_interval: int = 86400):
         """

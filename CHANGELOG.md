@@ -38,6 +38,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.5] - 2026-10-01
+
+### Fixed
+- **Crash after auto-update restart** (`ImportError: DLL load failed while importing
+  _tkinter`, followed by "Failed to remove temporary directory _MEIxxxx"). The
+  restart used `os.execl`, which inherited PyInstaller's onefile bootstrap
+  environment (`_MEIPASS2` / `_PYI_*`); the relaunched exe then reused the old
+  process's temp-extraction dir instead of extracting its own, and when the old
+  process exited and deleted that dir the new process lost its bundled Tcl/Tk DLLs.
+  The restart now strips those variables, launches a fresh detached process, and
+  hard-exits the old one so its temp dir is cleaned up normally
+  ([updater_gui.py](updater_gui.py)).
+- **Stale in-app version.** `current_version` was pinned to `1.4.2`, so the app
+  always considered itself outdated and re-prompted for updates immediately after
+  updating. Bumped to match the release ([gui_app.pyw](gui_app.pyw)).
+
+---
+
 ## [1.5.4] - 2026-10-01
 
 ### Changed
