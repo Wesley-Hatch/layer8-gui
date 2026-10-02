@@ -38,6 +38,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.4] - 2026-10-01
+
+### Changed
+- **Custom Cmd now supports URLs with query strings.** The argument metacharacter
+  filter blocked `?` and `&`, so commands like `curl "http://host/path?a=1&b=2"`
+  were rejected. Those two characters are now allowed on the Custom Cmd path.
+  This is safe because the app executes with `shell=False`, where `?`/`&` are
+  literal argument characters, not shell operators. Command chaining /
+  substitution / redirection characters (`;`, `|`, `` ` ``, `$`, `<`, `>`, `{`, `}`,
+  ...) remain blocked, and the shared validator's default behavior is unchanged
+  for every other caller ([input_validator.py](input_validator.py),
+  [scanner_tools.py](scanner_tools.py)).
+
+---
+
 ## [1.5.3] - 2026-10-01
 
 ### Added

@@ -2402,9 +2402,12 @@ class ScannerTools:
                     return False
 
                 # Defense-in-depth: we never invoke a shell (shell=False), but we
-                # still reject argument chaining / redirection metacharacters.
+                # still reject argument chaining / substitution / redirection
+                # metacharacters. '?' and '&' are allowed so URLs with query
+                # strings work (e.g. curl "http://host/path?a=1&b=2") - with
+                # shell=False these are literal argument characters, not operators.
                 for arg in args:
-                    if InputValidator.contains_shell_metacharacters(arg):
+                    if InputValidator.contains_shell_metacharacters(arg, allow={'?', '&'}):
                         self.log(f"[!] Dangerous character detected in argument: {arg}", is_error=True)
                         return False
 

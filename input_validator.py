@@ -131,14 +131,25 @@ class InputValidator:
                 
         return True, None
 
+    # Characters that can be dangerous when a string reaches a shell. Kept as a
+    # constant so callers can opt specific characters back in (see `allow`).
+    SHELL_METACHARACTERS = [';', '|', '&', '$', '`', '\n', '\r', '(', ')', '<', '>',
+                            '*', '?', '[', ']', '{', '}', '!', '\\', '"', "'"]
+
     @staticmethod
-    def contains_shell_metacharacters(text: str) -> bool:
+    def contains_shell_metacharacters(text: str, allow=None) -> bool:
         """
-        Check if text contains dangerous shell characters
+        Check if text contains dangerous shell characters.
+
+        `allow` is an optional iterable of characters to treat as safe. Callers
+        that execute with shell=False (where these characters are passed as
+        literal arguments, not interpreted) can allow URL punctuation such as
+        '?' and '&' without opening a command-injection hole. Default behavior
+        is unchanged for every existing caller.
         """
-        # More comprehensive list of metacharacters
-        metacharacters = [';', '|', '&', '$', '`', '\n', '\r', '(', ')', '<', '>', '*', '?', '[', ']', '{', '}', '!', '\\', '"', "'"]
-        return any(char in text for char in metacharacters)
+        allowed = set(allow or ())
+        return any(char in text for char in InputValidator.SHELL_METACHARACTERS
+                   if char not in allowed)
 
     @staticmethod
     def sanitize_for_shell(text: str) -> str:
