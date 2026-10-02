@@ -38,6 +38,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.2] - 2026-10-01
+
+### Fixed
+- **Standard commands (curl, ping, nslookup, …) now work.** The Custom Cmd / Web
+  Fetch / NSLookup tools previously rejected these with "not in the allowed list"
+  because only 10 third-party security tools were permitted. These utilities ship
+  with the OS (Windows System32 / standard on Linux) and did not need bundling —
+  they were simply being blocked.
+  - [tool_checker.py](tool_checker.py): added a `SYSTEM_TOOLS` set (curl, ping,
+    nslookup, tracert, ipconfig, arp, netstat, netsh, whoami, net, dig, wget, ssh,
+    …) resolved via PATH; version-probing is skipped for them (no `--version` /
+    avoids hangs), keeping startup fast.
+  - [scanner_tools.py](scanner_tools.py): Custom Cmd now resolves any installed
+    binary via PATH (not just the allowlist), so it truly runs any command-line
+    tool. `shell=False` and the argument metacharacter filter are retained. A
+    missing command now gives a clear "not found — install it / check PATH" message.
+
+---
+
 ## [1.5.1] - 2026-09-29
 
 ### Added

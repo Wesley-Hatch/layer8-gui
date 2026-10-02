@@ -2379,19 +2379,34 @@ class ScannerTools:
                 tool = cmd_list[0]
                 args = cmd_list[1:]
 
-                # Check if tool is allowed
-                if not self.executor.is_tool_available(tool):
-                    self.log(f"[!] Tool '{tool}' is not in the allowed list or not installed.", is_error=True)
+                # Resolve the executable. Prefer the app's known tool paths, then
+                # fall back to anything on the system PATH. Standard utilities the
+                # app offers - curl, ping, nslookup, tracert, ipconfig, etc. - are
+                # OS built-ins and resolve here, so "Custom Cmd" / "Web Fetch" /
+                # "NSLookup" can run any installed program rather than only the
+                # hardcoded security-tool allowlist.
+                import shutil
+                tool_path = None
+                try:
+                    tool_path = self.executor.tool_paths.get(tool)
+                except AttributeError:
+                    tool_path = None
+                if not tool_path:
+                    tool_path = shutil.which(tool)
+                if not tool_path:
+                    self.log(f"[!] Command '{tool}' was not found on this system. "
+                             f"Install it or make sure it is on your PATH.", is_error=True)
                     return False
 
-                # Check arguments for shell metacharacters
+                # Defense-in-depth: we never invoke a shell (shell=False), but we
+                # still reject argument chaining / redirection metacharacters.
                 for arg in args:
                     if InputValidator.contains_shell_metacharacters(arg):
                         self.log(f"[!] Dangerous character detected in argument: {arg}", is_error=True)
                         return False
 
-                # Use absolute path for tool
-                cmd_list[0] = self.executor.tool_paths[tool]
+                # Use the resolved absolute path for the tool.
+                cmd_list[0] = tool_path
 
                 process = subprocess.Popen(cmd_list, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 for line in iter(process.stdout.readline, ''):

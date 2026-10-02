@@ -21,7 +21,41 @@ class ToolChecker:
         'masscan': 'Mass IP port scanner',
         'wireshark': 'Network protocol analyzer'
     }
-    
+
+    # Standard system / networking utilities the app itself drives (Web Fetch,
+    # NSLookup, Custom Cmd, etc.). These ship with the OS (curl, ping, nslookup
+    # and friends are built into Windows 10/11 and standard on Linux/macOS), so
+    # they do NOT need bundling - they just need to be recognized. Resolved via
+    # shutil.which at runtime; whatever isn't present simply reports installed=False.
+    SYSTEM_TOOLS = {
+        'curl': 'HTTP client',
+        'ping': 'ICMP echo',
+        'nslookup': 'DNS lookup',
+        'tracert': 'Trace route (Windows)',
+        'traceroute': 'Trace route (Unix)',
+        'ipconfig': 'IP configuration (Windows)',
+        'ifconfig': 'IP configuration (Unix)',
+        'ip': 'IP configuration (Linux)',
+        'arp': 'ARP table',
+        'netstat': 'Network connections',
+        'nbtstat': 'NetBIOS stats (Windows)',
+        'route': 'Routing table',
+        'netsh': 'Network shell (Windows)',
+        'whoami': 'Current user',
+        'systeminfo': 'System information (Windows)',
+        'hostname': 'Host name',
+        'net': 'Net command (Windows)',
+        'powershell': 'PowerShell',
+        'wmic': 'WMI command-line (Windows)',
+        'dig': 'DNS lookup (Unix)',
+        'host': 'DNS lookup (Unix)',
+        'wget': 'HTTP client',
+        'ssh': 'Secure shell client',
+        'telnet': 'Telnet client',
+        'ftp': 'FTP client',
+        'nc': 'Netcat',
+    }
+
     @staticmethod
     def check_all_tools() -> Dict[str, dict]:
         """
@@ -29,12 +63,12 @@ class ToolChecker:
         Returns: {tool_name: {installed: bool, path: str, version: str, description: str}}
         """
         results = {}
-        
+
         for tool, description in ToolChecker.REQUIRED_TOOLS.items():
             path = shutil.which(tool)
             installed = path is not None
             version = None
-            
+
             if installed:
                 try:
                     # Try common version flags
@@ -57,14 +91,28 @@ class ToolChecker:
                 except Exception as e:
                     logger.debug(f"Could not get version for {tool}: {e}")
                     version = "Unknown"
-            
+
             results[tool] = {
                 'installed': installed,
                 'path': path,
                 'version': version or ("Unknown" if installed else None),
                 'description': description
             }
-        
+
+        # System utilities: resolve the path only. We deliberately DO NOT probe
+        # versions here - many of these (ping, arp, route, ...) have no --version
+        # flag and would instead try to act on "--version" and hang until timeout.
+        for tool, description in ToolChecker.SYSTEM_TOOLS.items():
+            if tool in results:
+                continue
+            path = shutil.which(tool)
+            results[tool] = {
+                'installed': path is not None,
+                'path': path,
+                'version': 'system' if path else None,
+                'description': description,
+            }
+
         return results
     
     @staticmethod
