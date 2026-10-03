@@ -38,6 +38,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.1] - 2026-10-02
+
+### Added
+- **Compliance mapping in the AI report.** `generate_report` now includes a
+  CJIS / CIS v8 / NIST 800-53 compliance section (findings mapped to controls +
+  a per-framework pass/fail rollup), using a self-contained control catalog so it
+  works in the frozen app. The offline report points to the `win_audit`
+  `.compliance.csv` for a structured mapping.
+- **Live AI status line.** The AI Operator shows what the AI is doing at all times
+  - "AI is thinking... (Ns)" with a heartbeat, "running tool: …", "tool finished",
+  "AI finished - awaiting your input", "stopped by user" - so it never looks frozen.
+
+### Changed
+- **Explicit refusals / no silent stops.** The AI is instructed to say so if it
+  cannot or will not complete a request. Responses are checked for the `refusal`
+  stop reason and empty completions and surfaced as clear messages
+  ("[AI DECLINED THIS REQUEST] …", "[AI returned no content …]") with a red status,
+  instead of a blank reply ([ai_analyzer.py](ai_analyzer.py), [gui_app.pyw](gui_app.pyw)).
+
+---
+
 ## [1.7.0] - 2026-10-02
 
 ### Added

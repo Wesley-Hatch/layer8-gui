@@ -1692,6 +1692,11 @@ def main(db_available=None, db_error=None):
                 scanner_instance[0].terminate()
                 append_to_chat("System", "Stopping all AI processes and commands...", "system")
                 try:
+                    ai_busy[0] = False
+                    set_ai_status("stopping...", "#e74c3c")
+                except Exception:
+                    pass
+                try:
                     stop_btn.config(state="disabled", text="STOPPING...")
                     send_btn.config(state="normal")
                     start_analysis_btn.config(state="normal")
@@ -1726,6 +1731,32 @@ def main(db_available=None, db_error=None):
             # Target Info
             current_target = target_entry.get().strip()
             tk.Label(header_frame, text=f"ACTIVE TARGET: {current_target if current_target else 'NONE'}", bg="#1e1e1e", fg="#666666", font=("Consolas", 9, "bold")).pack()
+
+            # Live status line so the operator always knows what the AI is doing
+            # (thinking, running a tool, finished, stopped, or declined) - the model
+            # can take a while and must never look frozen.
+            ai_busy = [False]
+            ai_status_lbl = tk.Label(header_frame, text="Status: idle", bg="#1e1e1e",
+                                     fg="#888888", font=("Consolas", 9, "bold"))
+            ai_status_lbl.pack()
+
+            def set_ai_status(txt, color="#888888"):
+                try:
+                    ai_status_lbl.config(text=f"Status: {txt}", fg=color)
+                except Exception:
+                    pass
+
+            def _heartbeat(start):
+                if not ai_busy[0]:
+                    return
+                secs = int(time.time() - start)
+                set_ai_status(f"AI is thinking... ({secs}s) - the model may take a while", "#f1c40f")
+                root.after(1000, lambda: _heartbeat(start))
+
+            def start_ai_busy(label="AI is thinking..."):
+                ai_busy[0] = True
+                set_ai_status(label, "#f1c40f")
+                _heartbeat(time.time())
 
             # Model and API Key Section
             settings_frame = tk.Frame(admin_ai_win, bg="#121212", padx=20, pady=10, bd=1, highlightbackground="#333333", highlightthickness=1)
@@ -1803,6 +1834,7 @@ def main(db_available=None, db_error=None):
             def execute_autonomous_cmd(cmd):
                 if is_stopping[0]: return
                 append_to_chat("System", f"Executing autonomous command: {cmd}", "system")
+                set_ai_status(f"running tool: {cmd[:40]}", "#f1c40f")
                 target = target_entry.get().strip()
                 active_scanner = scanner_instance[0]
                 
@@ -1827,6 +1859,7 @@ def main(db_available=None, db_error=None):
                         def back_to_ai():
                             if is_stopping[0]: return
                             append_to_chat("System", "Command execution complete.", "system")
+                            set_ai_status("tool finished", "#2ecc71")
                             if autonomous_var.get():
                                 append_to_chat("System", "Auto-submitting results to AI...", "system")
                                 send_to_ai(f"COMMAND OUTPUT ({cmd}):\n{full_output}", is_hidden=True)
@@ -1844,8 +1877,10 @@ def main(db_available=None, db_error=None):
                 threading.Thread(target=run_and_report, daemon=True).start()
 
             def handle_ai_response(response):
+                ai_busy[0] = False
                 if is_stopping[0]:
                     is_stopping[0] = False
+                    set_ai_status("stopped by user", "#e74c3c")
                     return
 
                 # Re-enable UI
@@ -1855,22 +1890,39 @@ def main(db_available=None, db_error=None):
                     stop_btn.config(state="disabled", text="STOP ANALYSIS")
                 except: pass
 
+                # Reflect the outcome in the status line (declined / empty / error / ok)
+                r_strip = (response or "").lstrip()
+                declined = r_strip.startswith(("[AI DECLINED", "[AI returned no content", "[!]"))
+                if r_strip.startswith("[AI DECLINED"):
+                    set_ai_status("AI declined this request (see message)", "#e74c3c")
+                elif r_strip.startswith("[AI returned no content") or r_strip.startswith("[!]"):
+                    set_ai_status("AI stopped without a full answer (see message)", "#e74c3c")
+                else:
+                    set_ai_status("AI responded", "#2ecc71")
+
                 append_to_chat("Assistant", response, "ai")
                 chat_history.append({"role": "assistant", "content": response})
-                
+
                 # Look for EXECUTE: command
+                ran_cmd = False
                 for line in response.split("\n"):
                     if line.strip().startswith("EXECUTE:"):
                         cmd = line.replace("EXECUTE:", "").strip()
                         if cmd:
+                            ran_cmd = True
                             if autonomous_var.get():
+                                set_ai_status(f"running tool: {cmd[:40]}", "#f1c40f")
                                 append_to_chat("System", f"Autonomous execution: {cmd}", "system")
                                 execute_autonomous_cmd(cmd)
                             else:
                                 if messagebox.askyesno("Autonomous Execution", f"The AI wants to execute the following command:\n\n{cmd}\n\nDo you want to allow this?"):
+                                    set_ai_status(f"running tool: {cmd[:40]}", "#f1c40f")
                                     execute_autonomous_cmd(cmd)
                                 else:
                                     append_to_chat("System", f"Execution of '{cmd}' was cancelled by user.", "system")
+                                    set_ai_status("tool execution cancelled - awaiting your input", "#888888")
+                if not ran_cmd and not declined:
+                    set_ai_status("AI finished - awaiting your input", "#2ecc71")
 
             def send_to_ai(message=None, is_hidden=False):
                 if is_stopping[0]: return
@@ -1909,9 +1961,14 @@ def main(db_available=None, db_error=None):
 
                 # Snapshot history before appending new message to avoid duplication
                 history_snapshot = list(chat_history)
-                
+
+                start_ai_busy("AI is thinking (contacting the model)...")
+
                 def thread_func():
-                    response = analyzer.admin_chat(target, active_scanner.all_findings, message, history_snapshot)
+                    try:
+                        response = analyzer.admin_chat(target, active_scanner.all_findings, message, history_snapshot)
+                    except Exception as e:
+                        response = f"[!] AI request failed: {e}"
                     root.after(0, lambda: handle_ai_response(response))
                 
                 chat_history.append({"role": "user", "content": message})

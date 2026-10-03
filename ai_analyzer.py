@@ -51,6 +51,47 @@ class AIAnalyzer:
         "full_audit": "Run all core scans against the target",
     }
 
+    # Compliance control catalog (kept self-contained so it works in the frozen
+    # GUI, which doesn't bundle the win_audit package). The AI maps findings to
+    # these exact control IDs in its report.
+    COMPLIANCE_REFERENCE = """
+    Map findings to these frameworks using these exact control IDs:
+    - CJIS Security Policy: 5.4 Auditing & Accountability, 5.5 Access Control,
+      5.6 Identification & Authentication, 5.7 Configuration Management,
+      5.8 Media Protection, 5.10 System & Communications Protection & Integrity.
+    - CIS Controls v8: CIS-3 Data Protection, CIS-4 Secure Configuration,
+      CIS-5 Account Management, CIS-6 Access Control, CIS-7 Vulnerability Management,
+      CIS-8 Audit Log Management, CIS-10 Malware Defenses, CIS-12 Network
+      Infrastructure, CIS-13 Network Monitoring.
+    - NIST SP 800-53: AC-2, AC-3, AC-6, AC-17, AU-2, AU-6, AU-12, CM-5, CM-6, CM-7,
+      IA-5, RA-5, SC-7, SC-8, SC-13, SC-23, SC-28, SI-2, SI-3, SI-4.
+    """
+
+    @staticmethod
+    def _extract_text(response):
+        """Pull text from a response, surfacing refusals and empty completions
+        clearly instead of returning a silent blank."""
+        try:
+            if getattr(response, "stop_reason", None) == "refusal":
+                det = getattr(response, "stop_details", None)
+                cat = getattr(det, "category", None) if det else None
+                expl = getattr(det, "explanation", None) if det else None
+                msg = "[AI DECLINED THIS REQUEST] The model would not complete this task"
+                if cat:
+                    msg += f" (category: {cat})"
+                msg += "."
+                if expl:
+                    msg += f"\nReason: {expl}"
+                msg += "\nRephrase the request, or confirm this is an authorized engagement."
+                return msg
+            text = "".join(getattr(b, "text", "") for b in response.content if hasattr(b, "text"))
+            text = text.strip()
+            if not text:
+                return "[AI returned no content - it stopped without answering. Try again or rephrase your request.]"
+            return text
+        except Exception as e:
+            return f"[!] Could not read the AI response: {e}"
+
     @classmethod
     def _tools_help(cls):
         lines = [f"      - {name}: {desc}" for name, desc in cls.AI_TOOLS.items()]
@@ -72,6 +113,10 @@ class AIAnalyzer:
         Only operate on the authorized target ({target}). Do not fabricate results.
         When you have enough information, STOP running tools and write a final report
         with: SUMMARY, FINDINGS (with severity), ATTACK PATH, and REMEDIATION.
+
+        If you cannot or will not perform a requested action - policy, safety, lack of
+        authorization, or a tool you decline to run - SAY SO EXPLICITLY in your reply
+        and explain why. Never stop silently or return an empty response.
         """
 
     def __init__(self, api_key=None, model="claude-opus-5-5"):
@@ -176,7 +221,14 @@ class AIAnalyzer:
         3. Findings (each: title, severity Critical/High/Medium/Low/Info, evidence, impact)
         4. Attack Path / Narrative
         5. Remediation & Recommendations (prioritized)
-        6. Appendix: tools run
+        6. Compliance Mapping (CJIS / CIS v8 / NIST 800-53): a table mapping each
+           finding to the affected control(s), and a short per-framework rollup of
+           which controls PASS vs. FAIL/REVIEW based on the findings.
+        7. Appendix: tools run
+        {self.COMPLIANCE_REFERENCE}
+        Note in the compliance section that this is a pragmatic mapping to aid an
+        audit, to be verified against the authoritative control set - not a
+        certification.
         If the data is thin, say so rather than padding.
         """
         if self.client:
@@ -187,7 +239,7 @@ class AIAnalyzer:
                     system=system_prompt,
                     messages=[{"role": "user", "content": [{"type": "text", "text": data}]}],
                 )
-                report = "".join(b.text for b in response.content if hasattr(b, "text"))
+                report = self._extract_text(response)
                 header = f"# Layer8 Penetration Test Report\n**Target:** {target or 'N/A'}  \n**Generated:** {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                 return header + report
             except Exception as e:
@@ -211,6 +263,10 @@ class AIAnalyzer:
         lines += ["", "## Tools Run"]
         for item in (history or [])[-30:]:
             lines.append(f"- [{item.get('time')}] {item.get('cmd')} -> {item.get('status')}")
+        lines += ["", "## Compliance Mapping (CJIS / CIS v8 / NIST 800-53)",
+                  "_Offline mode: for a structured per-control compliance report run the_",
+                  "_Windows auditor (`python -m win_audit`), which emits a `.compliance.csv`._",
+                  "_Add an API key here for an AI-generated compliance mapping of these findings._"]
         lines += ["", "_No AI connection; this is a raw rule-based report. Add an API key for a full narrative report._"]
         return "\n".join(lines)
 
@@ -246,7 +302,7 @@ class AIAnalyzer:
                     system=system_prompt,
                     messages=[{"role": "user", "content": [{"type": "text", "text": user_prompt}]}]
                 )
-                report = "".join([block.text for block in response.content if hasattr(block, 'text')])
+                report = self._extract_text(response)
                 return f"--- ADMIN AI DOMAIN ANALYSIS: {target} ---\n\n{report}"
             except Exception as e:
                 return f"[!] AI Error: {str(e)}\n\nFalling back to local domain analysis...\n\n" + self._local_domain_analysis(target, findings)
@@ -300,7 +356,7 @@ class AIAnalyzer:
                     system=system_prompt,
                     messages=formatted_messages
                 )
-                ai_msg = "".join([block.text for block in response.content if hasattr(block, 'text')])
+                ai_msg = self._extract_text(response)
                 
                 # We don't update chat_history here, the GUI will handle it to keep it in sync
                 return ai_msg
@@ -366,7 +422,7 @@ class AIAnalyzer:
                 messages=[{"role": "user", "content": [{"type": "text", "text": user_prompt}]}]
             )
             
-            report = "".join([block.text for block in response.content if hasattr(block, 'text')])
+            report = self._extract_text(response)
             return f"--- CLAUDE AI SECURITY REPORT ({time.strftime('%H:%M:%S')}) ---\n\n{report}"
         
         except Exception as e:
