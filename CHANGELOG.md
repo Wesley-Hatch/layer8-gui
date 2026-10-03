@@ -38,6 +38,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.2] - 2026-10-02
+
+### Added
+- **AI FEEDBACK screen parity.** The simpler AI FEEDBACK assistant now also has:
+  **Save Key** (persist your API key to `%APPDATA%/Layer8`), **Save Report**
+  (generate and save the full Markdown report including the CJIS/CIS/NIST
+  compliance mapping), and the **live status line** (thinking heartbeat →
+  responded / declined / error), matching the AI OPERATOR screen
+  ([gui_app.pyw](gui_app.pyw)).
+
+---
+
 ## [1.7.1] - 2026-10-02
 
 ### Added

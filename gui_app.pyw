@@ -2061,6 +2061,29 @@ def main(db_available=None, db_error=None):
             # AI Title
             tk.Label(ai_win, text="AI VULNERABILITY ANALYSIS", bg="#1e1e1e", fg="#00ff00", font=("Segoe UI", 14, "bold")).pack(pady=(20, 10))
 
+            # Live status line so the AI never looks frozen (heartbeat while thinking,
+            # then responded / declined / error).
+            fb_busy = [False]
+            fb_status_lbl = tk.Label(ai_win, text="Status: idle", bg="#1e1e1e", fg="#888888", font=("Consolas", 9, "bold"))
+            fb_status_lbl.pack()
+
+            def set_fb_status(txt, color="#888888"):
+                try:
+                    fb_status_lbl.config(text=f"Status: {txt}", fg=color)
+                except Exception:
+                    pass
+
+            def _fb_heartbeat(start):
+                if not fb_busy[0]:
+                    return
+                set_fb_status(f"AI is thinking... ({int(time.time() - start)}s) - the model may take a while", "#f1c40f")
+                root.after(1000, lambda: _fb_heartbeat(start))
+
+            def start_fb_busy(label="AI is thinking..."):
+                fb_busy[0] = True
+                set_fb_status(label, "#f1c40f")
+                _fb_heartbeat(time.time())
+
             # Settings Frame
             settings_card = tk.Frame(ai_win, bg="#121212", padx=20, pady=15, bd=1, highlightbackground="#333333", highlightthickness=1)
             settings_card.pack(fill="x", padx=20, pady=10)
@@ -2176,7 +2199,15 @@ def main(db_available=None, db_error=None):
                     try:
                         result = analyzer.analyze_session(history_data, findings_data, mode=selected_mode)
                         def update_ui():
-                            if result.startswith("[!]"):
+                            fb_busy[0] = False
+                            r = (result or "").lstrip()
+                            if r.startswith("[AI DECLINED"):
+                                set_fb_status("AI declined this request (see output)", "#e74c3c")
+                            elif r.startswith(("[!]", "[AI returned no content")):
+                                set_fb_status("AI stopped without a full answer (see output)", "#e74c3c")
+                            else:
+                                set_fb_status("AI finished - analysis ready", "#2ecc71")
+                            if r.startswith(("[!]", "[AI DECLINED", "[AI returned no content")):
                                 ai_text.insert(tk.END, result, "error")
                             else:
                                 ai_text.insert(tk.END, result)
@@ -2186,16 +2217,70 @@ def main(db_available=None, db_error=None):
                         root.after(0, update_ui)
                     except Exception as e:
                         def update_error():
+                            fb_busy[0] = False
+                            set_fb_status(f"error during analysis", "#e74c3c")
                             ai_text.insert(tk.END, f"\n[!] ERROR DURING ANALYSIS: {str(e)}", "error")
                             ai_text.config(state="disabled")
                             analyze_btn.config(state="normal", text="RE-RUN ANALYSIS")
                         root.after(0, update_error)
 
                 analyze_btn.config(state="disabled", text="ANALYZING...")
+                start_fb_busy("AI is thinking (contacting the model)...")
                 threading.Thread(target=analysis_thread, daemon=True).start()
 
             analyze_btn = tk.Button(ai_win, text="GENERATE AI RECOMMENDATIONS", bg="#00ff00", fg="#000000", bd=0, padx=30, pady=10, font=("Segoe UI", 10, "bold"), activebackground="#00cc00", cursor="hand2", command=run_ai_analysis)
-            analyze_btn.pack(pady=20)
+            analyze_btn.pack(pady=(20, 6))
+
+            def _selected_model_id():
+                mdl = model_map.get(model_var.get())
+                if mdl == "CUSTOM":
+                    mdl = custom_model_entry.get().strip()
+                return mdl or "claude-opus-5-5"
+
+            def save_fb_key():
+                key = api_key_entry.get().strip()
+                if key and AIAnalyzer(api_key=key).save_api_key(key):
+                    set_fb_status("API key saved for future sessions", "#2ecc71")
+                else:
+                    set_fb_status("could not save key (empty or write error)", "#e74c3c")
+
+            def save_fb_report():
+                start_fb_busy("generating report...")
+                key = api_key_entry.get().strip()
+                analyzer = AIAnalyzer(api_key=key if key else None, model=_selected_model_id())
+                sc = scanner_instance[0]
+                tgt = target_entry.get().strip()
+                def worker():
+                    rep = analyzer.generate_report(tgt, sc.all_findings, sc.history)
+                    def save_it():
+                        fb_busy[0] = False
+                        set_fb_status("report ready", "#2ecc71")
+                        from tkinter import filedialog
+                        fpath = filedialog.asksaveasfilename(
+                            defaultextension=".md",
+                            filetypes=[("Markdown", "*.md"), ("Text", "*.txt"), ("All", "*.*")],
+                            initialfile=f"Layer8_Report_{(tgt or 'session').replace('.', '_')}.md")
+                        if fpath:
+                            try:
+                                with open(fpath, "w", encoding="utf-8") as f:
+                                    f.write(rep)
+                                set_fb_status("report saved", "#2ecc71")
+                                messagebox.showinfo("Report Saved", f"Report (with CJIS/CIS/NIST mapping) saved to:\n{fpath}")
+                            except Exception as e:
+                                set_fb_status(f"save failed: {e}", "#e74c3c")
+                        else:
+                            set_fb_status("report ready (not saved)", "#888888")
+                    root.after(0, save_it)
+                threading.Thread(target=worker, daemon=True).start()
+
+            fb_btn_row = tk.Frame(ai_win, bg="#1e1e1e")
+            fb_btn_row.pack(pady=(0, 18))
+            tk.Button(fb_btn_row, text="SAVE KEY", bg="#226622", fg="#ffffff", bd=0, padx=16, pady=8,
+                      font=("Segoe UI", 9, "bold"), activebackground="#2a7a2a", cursor="hand2",
+                      command=save_fb_key).pack(side="left", padx=6)
+            tk.Button(fb_btn_row, text="SAVE REPORT", bg="#8e44ad", fg="#ffffff", bd=0, padx=16, pady=8,
+                      font=("Segoe UI", 9, "bold"), activebackground="#9b59b6", cursor="hand2",
+                      command=save_fb_report).pack(side="left", padx=6)
 
         # State for tools
         tools_visible = [True] # Tools are now always visible
